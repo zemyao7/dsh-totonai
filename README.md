@@ -1,8 +1,8 @@
 # dsh-totonai
 
-把 ToTonAI AI 中转站接进 DeepSeek Harness 的官方插件:账号登录、80+ 主流模型直连、站内扫码充值开通会员。
+把 ToTonAI AI 中转站接进 DeepSeek Harness 的官方插件:账号登录、72 个主流模型直连、站内扫码充值开通会员。
 
-> 支持 **GPT / ChatGPT / Claude / Gemini / DeepSeek / 豆包 / Grok / GLM** 等 80+ 主流模型。
+> 支持 **GPT / ChatGPT / Claude / Gemini / DeepSeek / 豆包 / Grok / GLM** 等 72 个主流模型。
 > 在 DSH 插件市场搜索栏输入 `GPT`、`Claude`、`DeepSeek`、`Gemini` 或 `ToTonAI` 都能搜到本插件。
 
 - **账号制,不接触上游 Key**:在 DSH **设置 → ToTonAI** 面板里用账号密码登录(或填插件配置),插件自动登录换令牌,你的上游 API Key 永远不会出现在插件包或对话里。
@@ -15,7 +15,7 @@
 | 能力 | 说明 |
 | --- | --- |
 | 图形面板 | 设置 → ToTonAI:登录 / 注册、会员状态与剩余额度、选档位与月年卡出收款码、"我已付款"申报、刷新状态 |
-| 模型接入 | OpenAI / Anthropic / Google / DeepSeek / 豆包 / Grok / GLM 等 80+ 文本模型 |
+| 模型接入 | OpenAI / Anthropic / Google / DeepSeek / 豆包 / Grok / GLM 等 72 个文本模型 |
 | 账号注册 | `totonai_register` 在对话里直接注册站点账号,不用打开网页 |
 | 账号登录 | 配置账号密码后自动换取令牌,令牌 7 天有效,过期自动静默续期 |
 | 自动重试 | 令牌失效(401)时自动重新登录并重试本次请求 |

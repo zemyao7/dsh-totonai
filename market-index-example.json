@@ -1,0 +1,70 @@
+{
+  "format": 1,
+  "title": {
+    "en": "ToTonAI plugins",
+    "zh": "ToTonAI 插件"
+  },
+  "description": {
+    "en": "ToTonAI AI gateway plugins for DeepSeek Harness: account login in the settings panel, 72 models, in-place QR recharge.",
+    "zh": "ToTonAI AI 中转站官方 DSH 插件:设置页面板里登录/注册、72 个模型直连、同一面板内扫码充值。"
+  },
+  "metadata": {
+    "categories": {
+      "model": {
+        "title": {
+          "en": "Model & account access",
+          "zh": "模型与账号接入"
+        }
+      }
+    },
+    "labels": {
+      "gpt": {
+        "title": { "en": "GPT", "zh": "GPT" }
+      },
+      "claude": {
+        "title": { "en": "Claude", "zh": "Claude" }
+      },
+      "gemini": {
+        "title": { "en": "Gemini", "zh": "Gemini" }
+      },
+      "deepseek": {
+        "title": { "en": "DeepSeek", "zh": "DeepSeek" }
+      }
+    }
+  },
+  "plugins": [
+    {
+      "name": "dsh-totonai",
+      "title": {
+        "en": "ToTonAI Gateway - GPT / Claude / Gemini / DeepSeek",
+        "zh": "ToTonAI 中转站 - GPT / Claude / Gemini / DeepSeek"
+      },
+      "description": {
+        "en": "Connect the ToTonAI AI gateway: sign in or create an account right in the DSH settings panel, use 72 mainstream models (GPT / Claude / Gemini / DeepSeek / Doubao / Grok / GLM), pick a plan and pay by QR code in the same panel. Account based; upstream API keys never leave the server.",
+        "zh": "接入 ToTonAI AI 中转站:在 DSH 设置页的 ToTonAI 面板里直接登录或注册,即可使用 72 个主流模型(GPT / Claude / Gemini / DeepSeek / 豆包 / Grok / GLM),并在同一面板里选档位、显示收款码、付款后申报开通。账号制,不接触上游 API Key。"
+      },
+      "icon": "https://raw.githubusercontent.com/zemyao7/dsh-totonai/main/icon.svg",
+      "author": "ToTonAI",
+      "homepage": "https://www.toton.pro",
+      "repository": {
+        "url": "https://github.com/zemyao7/dsh-totonai"
+      },
+      "metadata": {
+        "category": "model",
+        "labels": ["gpt", "claude", "gemini", "deepseek"]
+      },
+      "versions": [
+        {
+          "version": "0.1.3",
+          "publishTimestamp": 1793973745,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.0-rc.1 <0.3.0"
+          }
+        }
+      ]
+    }
+  ]
+}
