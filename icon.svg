@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#0f0f0f"/>
+  <g fill="none" stroke="#ffffff" stroke-width="26" stroke-linecap="round">
+    <circle cx="196" cy="180" r="34"/>
+    <circle cx="340" cy="180" r="34"/>
+    <circle cx="196" cy="330" r="34"/>
+    <circle cx="268" cy="255" r="34"/>
+    <circle cx="340" cy="330" r="34"/>
+    <path d="M226 196 L240 225 M312 196 L298 225 M226 314 L240 285 M312 314 L298 285 M268 281 L268 252"/>
+  </g>
+  <text x="256" y="452" text-anchor="middle" font-family="Arial, sans-serif" font-size="44" font-weight="bold" fill="#ffffff" letter-spacing="6">ToTonAI</text>
+</svg>
