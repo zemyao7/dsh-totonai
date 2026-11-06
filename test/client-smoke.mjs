@@ -15,9 +15,9 @@ const fakeReact = {
 globalThis.window = {
   __ModuleLoader__: {
     load(spec) {
-      assert.equal(spec.id, 'totonai', 'ModuleLoader id 必须为 totonai')
+      assert.equal(spec.id, 'dsh-totonai', 'ModuleLoader id 必须等于包名 dsh-totonai')
       const mod = spec.factory((name) => (name === 'react' ? fakeReact : {}))
-      assert.equal(mod.name, 'llm-totonai')
+      assert.equal(mod.name, 'dsh-totonai')
       assert.deepEqual(mod.inject, ['slots'])
       assert.equal(typeof mod.apply, 'function')
       const ctx = {
@@ -44,7 +44,7 @@ await import('../client/index.js')
 
 assert.equal(registrations.length, 1, '应当只注册一个设置页分区')
 assert.equal(registrations[0].options.name, 'settings.section')
-assert.equal(registrations[0].options.id, 'totonai')
+assert.equal(registrations[0].options.id, 'dsh-totonai')
 assert.equal(registrations[0].options.order, 30)
 assert.equal(registrations[0].options.label(), 'ToTonAI')
 assert.equal(typeof registrations[0].component, 'function')

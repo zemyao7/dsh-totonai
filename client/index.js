@@ -3,7 +3,7 @@
 // 手写单文件 bundle,无构建链,由 dsh web 客户端的 ModuleLoader 注入。
 // 硬约束:任何异常只 console.warn,界面挂掉也不能影响 dsh 设置页本身。
 window.__ModuleLoader__.load({
-  id: 'totonai',
+  id: 'dsh-totonai',
   factory: (require) => {
     const module = { exports: {} }
     const React = require('react')
@@ -290,13 +290,13 @@ window.__ModuleLoader__.load({
       ]))
     }
 
-    const name = 'llm-totonai'
+    const name = 'dsh-totonai'
     // 用到 slots 服务必须先声明,否则 ctx.slots 读不到
     const inject = ['slots']
     function apply(ctx) {
       try {
         ctx.slots.inject('settings.section', () =>
-          ctx.slots.register({ name: 'settings.section', id: 'totonai', order: 30, label: () => 'ToTonAI' }, SettingsSection),
+          ctx.slots.register({ name: 'settings.section', id: 'dsh-totonai', order: 30, label: () => 'ToTonAI' }, SettingsSection),
         )
       } catch (error) {
         console.warn('[totonai] 设置页注册失败', error)

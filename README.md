@@ -35,7 +35,7 @@
 npm pack
 
 # 在 DSH 里安装本地包
-dsh plugin --profile web add ./dsh-totonai-0.1.0.tgz
+dsh plugin --profile web add ./dsh-totonai-0.1.3.tgz
 ```
 
 ## 配置

@@ -1,4 +1,4 @@
-import { Context } from '@deepseek-ai/cordis'
+import type { Context } from '@deepseek-ai/cordis'
 import { Config } from './config.js'
 import type { TotonAiConfig } from './config.js'
 import { TotonAiAdapter } from './adapter.js'
@@ -7,7 +7,7 @@ import { createPayTools } from './tools.js'
 import { clearCreds, loadCreds, saveCreds } from './creds.js'
 import { registerPanel } from './panel.js'
 
-export const name = 'llm-totonai'
+export const name = 'dsh-totonai'
 
 export const inject = ['llm']
 
