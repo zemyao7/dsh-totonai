@@ -1,6 +1,0 @@
-url: https://github.com/zemyao7/dsh-totonai
-name: zemyao7/dsh-totonai
-category: model-provider
-description:
-  en: Connect ToTonAI AI gateway in DeepSeek Harness with your account. 80+ mainstream models (GPT/Claude/Gemini/DeepSeek/Doubao/Grok/GLM) plus in-place QR recharge to open membership. Account-based; no upstream API key is ever distributed.
-  zh: 在 DeepSeek Harness 里用 ToTonAI 账号接入 AI 中转站,一键使用 80+ 主流模型(GPT/Claude/Gemini/DeepSeek/豆包/Grok/GLM),并支持站内扫码充值开通会员。账号制,不乱发上游 API Key。
