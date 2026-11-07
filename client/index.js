@@ -131,10 +131,7 @@ window.__ModuleLoader__.load({
           h('div', { key: 'lv', style: { fontSize: 12, padding: '2px 8px', borderRadius: 999, border: '1px solid ' + C.border, color: d.active ? C.ok : C.warn } }, d.active ? d.displayName || d.level : L('未开通', 'Inactive')),
         ]),
         d.active
-          ? h('div', { key: 'kv', style: Object.assign({}, S.kv, { marginTop: 8 }) }, [
-              h('div', { key: 'a' }, L('总额度 ', 'Quota ') + tok(d.tokenQuota) + ' token'),
-              h('div', { key: 'b' }, L('已用 ', 'Used ') + tok(d.usedToken) + ' token · ' + L('剩余 ', 'Left ') + tok(d.remainToken) + ' token'),
-            ])
+          ? null
           : h('div', { key: 'kv', style: Object.assign({}, S.kv, { marginTop: 8 }) }, L('当前是免费档,充值后即可调用模型。', 'Free tier: recharge to unlock models.')),
         h('div', { key: 'act', style: { marginTop: 10, display: 'flex', gap: 8 } }, [
           h('button', { key: 'r', type: 'button', style: S.btn, disabled: refreshing, onClick: async () => { setRefreshing(true); try { await props.onRefresh() } finally { setRefreshing(false) } } }, refreshing ? L('刷新中…', 'Refreshing…') : L('刷新状态', 'Refresh')),
@@ -198,7 +195,7 @@ window.__ModuleLoader__.load({
             onClick: () => setPick(Object.assign({}, pick, { level: k })),
           }, [
             h('div', { key: 'n', style: { fontSize: 13, fontWeight: 600 } }, p.display_name || k),
-            h('div', { key: 'p', style: { fontSize: 12, color: C.sub, marginTop: 4 } }, '¥' + (p.month_price || 0) + L(' / 月', ' / mo') + ' · ' + tok(p.token_quota) + ' token'),
+            h('div', { key: 'p', style: { fontSize: 12, color: C.sub, marginTop: 4 } }, '¥' + (p.month_price || 0) + L(' / 月', ' / mo')),
           ])
         })),
         h('div', { key: 'per', style: Object.assign({}, S.row, { marginTop: 10 }) }, [

@@ -1,6 +1,6 @@
 {
   "name": "dsh-totonai",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "ToTonAI AI 中转站账号接入插件:账号登录、65 个模型直连、设置页面板内充值开通会员。账号制,不接触上游 API Key。",
   "type": "module",
   "main": "./lib/index.js",

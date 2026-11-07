@@ -60,7 +60,6 @@ async function doStatus(deps: PanelDeps): Promise<PanelResult> {
   }
   const level = String(info.level ?? 'free')
   const quota = Number(info.token_quota ?? 0)
-  const used = Number(info.used_token ?? 0)
   return {
     ok: true,
     loggedIn: true,
@@ -68,9 +67,6 @@ async function doStatus(deps: PanelDeps): Promise<PanelResult> {
     level,
     displayName: TIER_NAMES[level] ?? level,
     active: level !== 'free' && quota > 0,
-    tokenQuota: quota,
-    usedToken: used,
-    remainToken: Math.max(0, quota - used),
     baseURL: deps.baseURL,
     qr: {
       wechat: `${deps.baseURL}/qrcode/wechat`,
@@ -109,7 +105,17 @@ async function doRegister(deps: PanelDeps, body: any): Promise<PanelResult> {
 
 async function doQuote(deps: PanelDeps): Promise<PanelResult> {
   const cfg = await apiJson(deps.baseURL, '/api/package_config', { timeoutMs: deps.requestTimeoutMs })
-  return { ok: true, packages: cfg?.packages ?? {} }
+  // 只向面板暴露档位名称与价格:套餐里的 token 额度属于运营内部参数,不下发到客户端
+  const raw = (cfg?.packages ?? {}) as Record<string, any>
+  const packages: Record<string, { display_name: string; month_price: number; year_price: number }> = {}
+  for (const [level, info] of Object.entries(raw)) {
+    packages[level] = {
+      display_name: String(info?.display_name ?? level),
+      month_price: Number(info?.month_price ?? 0),
+      year_price: Number(info?.year_price ?? 0),
+    }
+  }
+  return { ok: true, packages }
 }
 
 async function doClaim(deps: PanelDeps, body: any): Promise<PanelResult> {
