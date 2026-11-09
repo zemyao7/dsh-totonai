@@ -82,6 +82,9 @@ dsh plugin --profile web add ./dsh-totonai-0.1.3.tgz
 
 > 说明:站点使用个人收款码,没有自动回调,开通由站长人工确认,这是当前设计的正常流程,不是故障。
 
+> **WorkBuddy 用户看这里** → 直接进 [workbuddy/](workbuddy/)，双击 `.cmd` 即可，不用点「添加模型」、不用填 JSON。
+> 本插件、以及 WorkBuddy 接入包，都需要 **www.toton.pro** 账号（免费注册，注册后在「我的 API Key」里复制 Key）。
+
 ## 会员档位
 
 | 档位 | 显示名 | 月卡 | 年卡 | 权益 |
