@@ -182,6 +182,30 @@ window.__ModuleLoader__.load({
         }
       }
 
+      const copyNote = () => {
+        const u = String(data.username || '')
+        if (!u) return
+        const done = () => setClaim({ busy: false, msg: L('已复制备注: ', 'Copied: ') + u + L(',付款时粘贴到备注栏', ' - paste it into the payment note'), kind: 'ok' })
+        const fallback = () => {
+          try {
+            const ta = document.createElement('textarea')
+            ta.value = u
+            ta.style.position = 'fixed'
+            ta.style.opacity = '0'
+            document.body.appendChild(ta)
+            ta.select()
+            document.execCommand('copy')
+            document.body.removeChild(ta)
+            done()
+          } catch (e) { }
+        }
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(u).then(done, fallback)
+          } else fallback()
+        } catch (e) { fallback() }
+      }
+
       return h('div', { style: S.card }, [
         h('div', { key: 'h', style: { fontSize: 13, fontWeight: 600, marginBottom: 10, color: C.text } }, L('开通 / 续费会员', 'Membership')),
         h('div', { key: 'lv', style: Object.assign({}, S.row, { flexWrap: 'wrap' }) }, levels.map((k) => {
@@ -208,7 +232,13 @@ window.__ModuleLoader__.load({
           ? h('div', { key: 'ord', style: { marginTop: 12 } }, [
               h('div', { key: 'amt', style: { fontSize: 13, color: C.text } }, L('应付 ', 'Amount ') + '¥' + order.amount + ' · ' + (order.display_name || '') + ' · ' + L('订单号 ', 'Order ') + order.out_trade_no),
               h('img', { key: 'qr', src: qrUrl, alt: L('收款码', 'QR code'), style: S.qr }),
-              h('div', { key: 'tip', style: { fontSize: 12, color: C.warn, lineHeight: 1.7 } }, L('付款备注务必填写你的用户名:', 'Put your username in the payment note: ') + (data.username || '')),
+              h('div', { key: 'tip', style: { marginTop: 8, padding: '10px 12px', borderRadius: 8, border: '1px solid ' + C.warn, background: 'rgba(255,170,0,.10)', lineHeight: 1.7 } }, [
+                h('div', { key: 't1', style: { fontSize: 13, fontWeight: 700, color: C.warn } }, L('付款备注必须填写: ', 'Payment note must be: ') + (data.username || '')),
+                h('div', { key: 't2', style: { fontSize: 12, color: C.sub, marginTop: 4 } }, L('不写备注站长对不上账,开通会延迟。忘记备注的,加管理员 QQ 710361670 处理。', 'Without it the owner cannot match your payment. Forgot the note? Contact admin QQ 710361670.')),
+                h('div', { key: 't3', style: { marginTop: 8 } }, [
+                  h('button', { key: 'cp', type: 'button', style: S.btn, onClick: copyNote }, L('复制备注', 'Copy note')),
+                ]),
+              ]),
               h('div', { key: 'act', style: { marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' } }, [
                 h('button', { key: 'c', type: 'button', style: claim.busy ? Object.assign({}, S.btnPrimary, { opacity: 0.6 }) : S.btnPrimary, disabled: claim.busy, onClick: claimPay }, claim.busy ? L('提交中…', 'Submitting…') : L('我已付款', 'I have paid')),
                 h('button', { key: 'r', type: 'button', style: S.btn, onClick: props.onRefresh }, L('刷新状态', 'Refresh')),
@@ -220,6 +250,7 @@ window.__ModuleLoader__.load({
               h('div', { key: 't', style: { fontSize: 12, color: C.faint } }, L('个人收款码,付款后由站长核对开通', 'Manual activation after payment')),
             ]),
         h('div', { key: 'note', style: { fontSize: 12, color: C.faint, marginTop: 12, lineHeight: 1.7 } }, L('价格实时读取站点配置。个人收款码没有自动回调,开通由站长人工确认,这不是故障。', 'Prices come from the site config. Personal QR codes have no callback; activation is manual by design.')),
+        h('div', { key: 'contact', style: { fontSize: 12, color: C.faint, marginTop: 6, lineHeight: 1.7 } }, L('官网 www.toton.pro · 客服 QQ 710361670', 'Site www.toton.pro · Support QQ 710361670')),
       ])
     }
 
