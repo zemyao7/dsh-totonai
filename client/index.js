@@ -131,8 +131,10 @@ window.__ModuleLoader__.load({
           h('div', { key: 'lv', style: { fontSize: 12, padding: '2px 8px', borderRadius: 999, border: '1px solid ' + C.border, color: d.active ? C.ok : C.warn } }, d.active ? d.displayName || d.level : L('未开通', 'Inactive')),
         ]),
         d.active
-          ? null
-          : h('div', { key: 'kv', style: Object.assign({}, S.kv, { marginTop: 8 }) }, L('当前是免费档,充值后即可调用模型。', 'Free tier: recharge to unlock models.')),
+          ? h('div', { key: 'kv', style: Object.assign({}, S.kv, { marginTop: 8 }) }, d.allowed === -1
+              ? L('当前档位可用全部模型。', 'All models available on your plan.')
+              : L('当前档位可用 ', 'Models available: ') + (d.allowed || 0) + L(' 个模型;模型选择器里能看到全部模型,标了「需升级」的就是当前档位调不了的,升级后即可解锁。', ' — locked ones are marked "需升级" in the picker.'))
+          : h('div', { key: 'kv', style: Object.assign({}, S.kv, { marginTop: 8 }) }, L('当前是免费档,还没有可用模型。模型选择器里能看到全部模型,标了「需升级」的是要开通后才能调用的。', 'Free tier: models are visible but marked "需升级" until you recharge.')),
         h('div', { key: 'act', style: { marginTop: 10, display: 'flex', gap: 8 } }, [
           h('button', { key: 'r', type: 'button', style: S.btn, disabled: refreshing, onClick: async () => { setRefreshing(true); try { await props.onRefresh() } finally { setRefreshing(false) } } }, refreshing ? L('刷新中…', 'Refreshing…') : L('刷新状态', 'Refresh')),
           h('button', { key: 'o', type: 'button', style: S.btn, onClick: props.onLogout }, L('退出登录', 'Sign out')),
