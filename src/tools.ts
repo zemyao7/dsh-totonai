@@ -18,15 +18,50 @@ interface TierInfo {
 
 /** 与后端 MEMBER_CONFIG 保持一致的兜底值(/api/package_config 不可用时使用) */
 const FALLBACK_TIERS: Record<string, TierInfo> = {
-  entry: { display_name: 'Go', month_price: 27, year_price: 307, token_quota: 5_000_000 },
-  pro: { display_name: 'Plus', month_price: 77, year_price: 847, token_quota: 25_000_000 },
-  ultimate: { display_name: 'Pro Max', month_price: 177, year_price: 2077, token_quota: 50_000_000 },
+  entry: { display_name: 'Go', month_price: 27, year_price: 307, token_quota: 3_500_000 },
+  pro: { display_name: 'Plus', month_price: 77, year_price: 847, token_quota: 10_000_000 },
+  ultimate: { display_name: 'Pro Max', month_price: 177, year_price: 2077, token_quota: 23_000_000 },
 }
 
 const TIER_TEXT =
-  'entry=Go(27元/月,307元/年,500万token/月);' +
-  'pro=Plus(77元/月,847元/年,2500万token/月);' +
-  'ultimate=Pro Max(177元/月,2077元/年,5000万token/月+10张生图/日)'
+  'entry=Go(27元/月,307元/年,350万token/月);' +
+  'pro=Plus(77元/月,847元/年,1000万token/月);' +
+  'ultimate=Pro Max(177元/月,2077元/年,2300万token/月)'
+
+/** 加油包兜底值:只加 token 额度,不加模型权限,90 天有效 */
+interface TopupInfo {
+  display_name: string
+  price: number
+  tokens: number
+}
+
+const FALLBACK_TOPUPS: Record<string, TopupInfo> = {
+  topup_10: { display_name: '加油包 120万 token', price: 10, tokens: 1_200_000 },
+  topup_30: { display_name: '加油包 360万 token', price: 30, tokens: 3_600_000 },
+  topup_70: { display_name: '加油包 850万 token', price: 70, tokens: 8_500_000 },
+  topup_160: { display_name: '加油包 2000万 token', price: 160, tokens: 20_000_000 },
+}
+
+const TOPUP_TEXT =
+  'topup_10=10元/120万token;topup_30=30元/360万token;' +
+  'topup_70=70元/850万token;topup_160=160元/2000万token'
+
+async function loadTopup(deps: PayToolDeps, pack: string): Promise<TopupInfo> {
+  try {
+    const cfg = await apiJson(deps.baseURL, '/api/package_config', { timeoutMs: deps.requestTimeoutMs })
+    const t = cfg?.topups?.[pack]
+    if (t && Number(t.price) > 0) {
+      return {
+        display_name: String(t.display_name ?? pack),
+        price: Number(t.price),
+        tokens: Number(t.tokens ?? 0),
+      }
+    }
+  } catch {
+    // 站点不可达时静默回退兜底价格
+  }
+  return FALLBACK_TOPUPS[pack] ?? { display_name: pack, price: 0, tokens: 0 }
+}
 
 /** 价格一律从站点 /api/package_config 实时读取,读不到才用兜底值,避免插件与站点调价不同步 */
 async function loadTier(deps: PayToolDeps, level: string): Promise<TierInfo> {
@@ -231,6 +266,105 @@ export function createPayTools(deps: PayToolDeps) {
     },
   })
 
+  const topup = defineTool({
+    name: 'totonai_topup',
+    description:
+      '为当前 ToTonAI 账号加购加油包:只增加 token 额度,不改变模型权限,额度 90 天有效,月额度用完时自动接着扣。' +
+      `档位:${TOPUP_TEXT}。` +
+      '用户说"额度不够了""加个加油包""再买点 token"时调用。' +
+      '注意:站点使用个人收款码,需用户按金额转账并在备注写明用户名,由站长核对后手动加额度,没有自动回调。',
+    parameters: {
+      pack: {
+        type: 'string',
+        enum: ['topup_10', 'topup_30', 'topup_70', 'topup_160'],
+        required: true,
+        description: '加油包档位:topup_10(10元/120万) topup_30(30元/360万) topup_70(70元/850万) topup_160(160元/2000万)',
+      },
+      pay_type: {
+        type: 'string',
+        enum: ['wechat', 'alipay'],
+        description: '支付方式,默认微信;用户明确要支付宝时传 alipay',
+      },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        properties: {
+          ok: { type: 'boolean' },
+          out_trade_no: { type: 'string' },
+          amount: { type: 'number' },
+          level: { type: 'string' },
+          tokens: { type: 'number' },
+          display_name: { type: 'string' },
+          pay_type: { type: 'string' },
+          qr_url: { type: 'string' },
+          username: { type: 'string' },
+          msg: { type: 'string' },
+        },
+        additionalProperties: true,
+      },
+      render(_args, value) {
+        if (!value.ok) {
+          return textBlock(`加油包下单失败:${value.msg || '未知错误'}。请确认插件里的 ToTonAI 账号密码正确。`)
+        }
+        const payText = value.pay_type === 'alipay' ? '支付宝' : '微信'
+        return textBlock(
+          [
+            `已生成 ${value.display_name ?? ''} 加油包订单,应付 ¥${value.amount ?? 0},订单号 ${value.out_trade_no ?? ''}`,
+            '',
+            `1. 用浏览器打开${payText}收款码(手机扫码):`,
+            value.qr_url ?? '',
+            `2. 转账金额 ¥${value.amount ?? 0},付款备注必须填写你的用户名:${value.username ?? '(你的 ToTonAI 用户名)'}`,
+            `3. 付款完成后回来说"已付款",我会把这条申报提交给站长`,
+            '',
+            `到账后 ${formatTokens(Number(value.tokens ?? 0))} token 会加进你的账号,90 天有效,只加额度、不改模型权限。个人收款码没有自动回调,由站长人工核对。`,
+            value.username ? '' : '(还没读到你的用户名,付款前请确认备注里写的是你的 ToTonAI 账号)',
+          ].join('\n'),
+        )
+      },
+    },
+    async execute(args) {
+      const pack = String(args.pack)
+      const payType = args.pay_type === 'alipay' ? 'alipay' : 'wechat'
+      try {
+        const token = await tokenStore.ensure()
+        const info = await loadTopup(deps, pack)
+        let username = ''
+        try {
+          const ui = await apiJson(baseURL, '/api/user_info', { token, timeoutMs: requestTimeoutMs })
+          username = String(ui?.username ?? '')
+        } catch {
+          // 用户名拿不到不影响下单
+        }
+        return {
+          ok: info.price > 0,
+          out_trade_no: makeOrderNo(),
+          amount: info.price,
+          level: pack,
+          tokens: info.tokens,
+          display_name: info.display_name,
+          pay_type: payType,
+          qr_url: `${baseURL}/qrcode/${payType}`,
+          username,
+          msg: info.price > 0 ? '' : '未取到该档位价格,请确认站点地址或稍后重试',
+        }
+      } catch (e) {
+        return {
+          ok: false,
+          out_trade_no: '',
+          amount: 0,
+          level: pack,
+          tokens: 0,
+          display_name: '',
+          pay_type: payType,
+          qr_url: `${baseURL}/qrcode/${payType}`,
+          username: '',
+          msg: String((e as Error)?.message ?? ''),
+        }
+      }
+    },
+  })
+
   const payClaim = defineTool({
     name: 'totonai_pay_claim',
     description:
@@ -327,6 +461,11 @@ export function createPayTools(deps: PayToolDeps) {
           display_name: { type: 'string' },
           token_quota: { type: 'number' },
           used_token: { type: 'number' },
+          quota_total: { type: 'number' },
+          quota_remaining: { type: 'number' },
+          bonus_token: { type: 'number' },
+          bonus_expire_ts: { type: 'number' },
+          is_free: { type: 'boolean' },
           msg: { type: 'string' },
         },
         additionalProperties: true,
@@ -335,20 +474,35 @@ export function createPayTools(deps: PayToolDeps) {
         if (!value.ok) {
           return textBlock(`查询失败:${value.msg || '未知错误'}。请确认插件里的账号密码正确。`)
         }
+        const quota = Number(value.quota_total ?? value.token_quota ?? 0)
+        const used = Number(value.used_token ?? 0)
+        const remain = Number(value.quota_remaining ?? Math.max(0, quota - used))
+        const bonus = Math.max(0, Number(value.bonus_token ?? 0))
+        const bonusTs = Number(value.bonus_expire_ts ?? 0)
+        const bonusDays = bonus > 0 && bonusTs > 0 ? Math.max(0, Math.ceil((bonusTs - Date.now() / 1000) / 86400)) : 0
+        if (value.is_free && quota > 0) {
+          return textBlock(
+            [
+              `账号 ${value.username ?? ''} 当前是免费档,可用 10 个免费模型。`,
+              `免费体验额度 ${formatTokens(quota)} token,已用 ${formatTokens(used)} token,剩余约 ${formatTokens(remain)} token。`,
+              '免费额度是一次性的,用完为止不按月重置;想解锁全部模型请开通包月。',
+            ].join('\n'),
+          )
+        }
         if (value.active) {
-          const quota = Number(value.token_quota ?? 0)
-          const used = Number(value.used_token ?? 0)
-          const remain = Math.max(0, quota - used)
           return textBlock(
             [
               `账号 ${value.username ?? ''} 已开通 ${value.display_name ?? value.level ?? ''}。`,
-              `总额度 ${formatTokens(quota)} token,已用 ${formatTokens(used)} token,剩余约 ${formatTokens(remain)} token。`,
+              `本月额度 ${formatTokens(quota)} token,已用 ${formatTokens(used)} token,剩余约 ${formatTokens(remain)} token。`,
+              bonus > 0
+                ? `加油包余额 ${formatTokens(bonus)} token${bonusDays > 0 ? `(${bonusDays} 天后到期)` : ''},额度用完时自动接着扣。`
+                : '没有加油包余额;额度不够可以说"加个加油包",只加额度、不加模型权限。',
             ].join('\n'),
           )
         }
         return textBlock(
           [
-            `账号 ${value.username ?? ''} 当前未开通会员(或还处于免费档)。`,
+            `账号 ${value.username ?? ''} 当前未开通会员,也没有免费体验额度。`,
             '如果刚付款并已申报,请等站长核对,一般 5 分钟内开通后再查一次。',
             '如果还没付款,说"我要充值"即可生成收款码订单。',
           ].join('\n'),
@@ -366,9 +520,14 @@ export function createPayTools(deps: PayToolDeps) {
           active: level !== 'free' && quota > 0,
           username: String(data?.username ?? ''),
           level,
-          display_name: FALLBACK_TIERS[level]?.display_name ?? level,
+          display_name: level === 'free' ? (quota > 0 ? '免费体验' : '未开通') : FALLBACK_TIERS[level]?.display_name ?? level,
           token_quota: quota,
           used_token: Number(data?.used_token ?? 0),
+          quota_total: Number(data?.quota_total ?? quota),
+          quota_remaining: Number(data?.quota_remaining ?? Math.max(0, quota - Number(data?.used_token ?? 0))),
+          bonus_token: Math.max(0, Number(data?.bonus_token ?? 0) - Number(data?.bonus_used ?? 0)),
+          bonus_expire_ts: Number(data?.bonus_expire_ts ?? 0),
+          is_free: level === 'free',
           msg: String(data?.msg ?? ''),
         }
       } catch (e) {
@@ -380,13 +539,18 @@ export function createPayTools(deps: PayToolDeps) {
           display_name: '',
           token_quota: 0,
           used_token: 0,
+          quota_total: 0,
+          quota_remaining: 0,
+          bonus_token: 0,
+          bonus_expire_ts: 0,
+          is_free: false,
           msg: String((e as Error)?.message ?? ''),
         }
       }
     },
   })
 
-  return [register, recharge, payClaim, payStatus]
+  return [register, recharge, topup, payClaim, payStatus]
 }
 
 function textBlock(text: string): ContentBlock[] {

@@ -59,14 +59,38 @@ async function doStatus(deps: PanelDeps): Promise<PanelResult> {
     return { ok: true, loggedIn: false, baseURL: deps.baseURL, msg: String(info?.msg ?? '未登录') }
   }
   const level = String(info.level ?? 'free')
-  const quota = Number(info.token_quota ?? 0)
+  const expireTs = Number(info.expire_ts ?? 0)
+  const am = info.allow_models
+  const allowed: number = Array.isArray(am) ? am.length : am === '*' ? -1 : 0
+  const active = level !== 'free' && (expireTs === 0 || expireTs > Math.floor(Date.now() / 1000))
+  // 额度:月额度 + 加油包,都是站点 /api/user_info 直接下发的真实数字
+  const quotaTotal = Number(info.quota_total ?? info.token_quota ?? 0)
+  const used = Number(info.used_token ?? 0)
+  const remain = Number(info.quota_remaining ?? Math.max(0, quotaTotal - used))
+  const bonusTotal = Number(info.bonus_token ?? 0)
+  const bonusUsed = Number(info.bonus_used ?? 0)
+  const bonus = Math.max(0, bonusTotal - bonusUsed)
+  const bonusExpire = Number(info.bonus_expire_ts ?? 0)
+  const bonusDays = bonus > 0 && bonusExpire > 0 ? Math.max(0, Math.ceil((bonusExpire - Date.now() / 1000) / 86400)) : 0
+  const resetTs = Number(info.quota_reset_ts ?? 0)
+  const resetDays = resetTs > 0 ? Math.max(0, Math.ceil((resetTs + 30 * 86400 - Date.now() / 1000) / 86400)) : 0
   return {
     ok: true,
     loggedIn: true,
     username: String(info.username ?? deps.tokenStore.currentUser),
     level,
-    displayName: TIER_NAMES[level] ?? level,
-    active: level !== 'free' && quota > 0,
+    displayName: level === 'free' ? (quotaTotal > 0 ? '免费体验' : '未开通') : TIER_NAMES[level] ?? level,
+    active,
+    allowed,
+    isFree: level === 'free',
+    quota: {
+      total: quotaTotal,
+      used,
+      remain,
+      bonus,
+      bonusDays,
+      resetDays,
+    },
     baseURL: deps.baseURL,
     qr: {
       wechat: `${deps.baseURL}/qrcode/wechat`,
@@ -95,7 +119,7 @@ async function doRegister(deps: PanelDeps, body: any): Promise<PanelResult> {
   if (!username || !password) return fail('账号和密码不能为空', 'BAD_INPUT')
   const data = await apiJson(deps.baseURL, '/register', {
     method: 'POST',
-    body: { username, password },
+    body: { username, password, device_id: String(body?.device_id ?? '') },
     timeoutMs: deps.requestTimeoutMs,
   })
   if (!data?.ok) return fail(String(data?.msg ?? '注册失败'), 'REGISTER')
@@ -105,17 +129,38 @@ async function doRegister(deps: PanelDeps, body: any): Promise<PanelResult> {
 
 async function doQuote(deps: PanelDeps): Promise<PanelResult> {
   const cfg = await apiJson(deps.baseURL, '/api/package_config', { timeoutMs: deps.requestTimeoutMs })
-  // 只向面板暴露档位名称与价格:套餐里的 token 额度属于运营内部参数,不下发到客户端
+  // 档位名称、价格、每月 token 额度全部来自站点实时配置,插件不写死
   const raw = (cfg?.packages ?? {}) as Record<string, any>
-  const packages: Record<string, { display_name: string; month_price: number; year_price: number }> = {}
+  const packages: Record<string, { display_name: string; month_price: number; year_price: number; token_quota: number }> = {}
   for (const [level, info] of Object.entries(raw)) {
     packages[level] = {
       display_name: String(info?.display_name ?? level),
       month_price: Number(info?.month_price ?? 0),
       year_price: Number(info?.year_price ?? 0),
+      token_quota: Number(info?.token_quota ?? 0),
     }
   }
-  return { ok: true, packages }
+  // 加油包:只加额度,不加模型权限
+  const rawTop = (cfg?.topups ?? {}) as Record<string, any>
+  const topups: Record<string, { display_name: string; price: number; tokens: number }> = {}
+  for (const [pack, info] of Object.entries(rawTop)) {
+    topups[pack] = {
+      display_name: String(info?.display_name ?? pack),
+      price: Number(info?.price ?? 0),
+      tokens: Number(info?.tokens ?? 0),
+    }
+  }
+  // 免费体验额度:站点下发的是对象 { tokens, models },老版本可能是纯数字,两种都认
+  const freeTrialRaw = cfg?.free_trial
+  const freeTrial =
+    typeof freeTrialRaw === 'number' ? freeTrialRaw : Number((freeTrialRaw as any)?.tokens ?? 0)
+  return {
+    ok: true,
+    packages,
+    topups,
+    topupValidDays: Number(cfg?.topup_valid_days ?? 90),
+    freeTrial,
+  }
 }
 
 async function doClaim(deps: PanelDeps, body: any): Promise<PanelResult> {
