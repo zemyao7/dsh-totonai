@@ -1,6 +1,6 @@
 {
   "name": "dsh-totonai",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "description": "ToTonAI AI 中转站账号接入插件:账号登录、65 个模型全部可见(当前档位不可用的标「需升级」)、设置页面板内查看本月额度与加油包余额、包月与加油包充值开通。账号制,不接触上游 API Key。",
   "type": "module",
   "main": "./lib/index.js",

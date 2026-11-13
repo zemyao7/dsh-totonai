@@ -235,8 +235,13 @@ async function collect(adapter, options) {
       return jsonResponse(200, {
         ok: true,
         packages: {
-          pro: { display_name: 'Plus', month_price: 77, year_price: 847, token_quota: 25_000_000 },
+          pro: { display_name: 'Plus', month_price: 77, year_price: 847, token_quota: 40_000_000 },
         },
+        topups: {
+          topup_10: { display_name: '加油包 500万 token', price: 10, tokens: 5_000_000 },
+        },
+        topup_valid_days: 90,
+        free_trial: 300_000,
       })
     }
     if (entry.url === BASE + '/api/user_info') {
@@ -246,6 +251,11 @@ async function collect(adapter, options) {
         level: 'free',
         token_quota: 0,
         used_token: 0,
+        quota_total: 0,
+        quota_remaining: 0,
+        bonus_token: 0,
+        bonus_used: 0,
+        bonus_expire_ts: 0,
       })
     }
     if (entry.url === BASE + '/api/pay/manual_notify') {
@@ -261,8 +271,8 @@ async function collect(adapter, options) {
   tokens.tokenUser = 'demo'
   tokens.expiresAt = Date.now() + 60_000
   const tools = createPayTools({ baseURL: BASE, requestTimeoutMs: 60_000, tokenStore: tokens })
-  assert.equal(tools.length, 4)
-  const [register, recharge, payClaim, payStatus] = tools
+  assert.equal(tools.length, 5)
+  const [register, recharge, topup, payClaim, payStatus] = tools
 
   // 5.0 对话内注册:调站点 /register,不需要打开网页
   assert.equal(register.name, 'totonai_register')
@@ -295,6 +305,18 @@ async function collect(adapter, options) {
     !fetchCalls.some((c) => c.url.includes('/api/pay/create')),
     '个人收款码模式下不得调用码支付 /api/pay/create',
   )
+
+  // 5.2b 加油包:只加额度、不改权限,价格与 token 数实时读取站点
+  assert.equal(topup.name, 'totonai_topup')
+  assert.deepEqual(topup.parameters.required, ['pack'])
+  assert.equal(topup.parameters.properties.pack.enum.join(','), 'topup_10,topup_30,topup_50,topup_100')
+  const topupOrder = await topup.execute({ pack: 'topup_10' })
+  assert.equal(topupOrder.ok, true)
+  assert.equal(topupOrder.amount, 10)
+  assert.equal(topupOrder.tokens, 5_000_000)
+  assert.equal(topupOrder.level, 'topup_10')
+  assert.equal(topupOrder.qr_url, BASE + '/qrcode/wechat')
+  assert.equal(topupOrder.username, 'demo')
 
   // 5.3 申报:走现有 /api/pay/manual_notify,带 Bearer 令牌与订单号
   const claim = await payClaim.execute({

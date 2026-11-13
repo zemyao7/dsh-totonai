@@ -18,15 +18,15 @@ interface TierInfo {
 
 /** 与后端 MEMBER_CONFIG 保持一致的兜底值(/api/package_config 不可用时使用) */
 const FALLBACK_TIERS: Record<string, TierInfo> = {
-  entry: { display_name: 'Go', month_price: 27, year_price: 307, token_quota: 3_500_000 },
-  pro: { display_name: 'Plus', month_price: 77, year_price: 847, token_quota: 10_000_000 },
-  ultimate: { display_name: 'Pro Max', month_price: 177, year_price: 2077, token_quota: 23_000_000 },
+  entry: { display_name: 'Go', month_price: 27, year_price: 307, token_quota: 15_000_000 },
+  pro: { display_name: 'Plus', month_price: 77, year_price: 847, token_quota: 40_000_000 },
+  ultimate: { display_name: 'Pro Max', month_price: 177, year_price: 2077, token_quota: 110_000_000 },
 }
 
 const TIER_TEXT =
-  'entry=Go(27元/月,307元/年,350万token/月);' +
-  'pro=Plus(77元/月,847元/年,1000万token/月);' +
-  'ultimate=Pro Max(177元/月,2077元/年,2300万token/月)'
+  'entry=Go(27元/月,307元/年,1500万token/月);' +
+  'pro=Plus(77元/月,847元/年,4000万token/月);' +
+  'ultimate=Pro Max(177元/月,2077元/年,11000万token/月)'
 
 /** 加油包兜底值:只加 token 额度,不加模型权限,90 天有效 */
 interface TopupInfo {
@@ -36,15 +36,15 @@ interface TopupInfo {
 }
 
 const FALLBACK_TOPUPS: Record<string, TopupInfo> = {
-  topup_10: { display_name: '加油包 120万 token', price: 10, tokens: 1_200_000 },
-  topup_30: { display_name: '加油包 360万 token', price: 30, tokens: 3_600_000 },
-  topup_70: { display_name: '加油包 850万 token', price: 70, tokens: 8_500_000 },
-  topup_160: { display_name: '加油包 2000万 token', price: 160, tokens: 20_000_000 },
+  topup_10: { display_name: '加油包 500万 token', price: 10, tokens: 5_000_000 },
+  topup_30: { display_name: '加油包 1500万 token', price: 30, tokens: 15_000_000 },
+  topup_50: { display_name: '加油包 2500万 token', price: 50, tokens: 25_000_000 },
+  topup_100: { display_name: '加油包 5000万 token', price: 100, tokens: 50_000_000 },
 }
 
 const TOPUP_TEXT =
-  'topup_10=10元/120万token;topup_30=30元/360万token;' +
-  'topup_70=70元/850万token;topup_160=160元/2000万token'
+  'topup_10=10元/500万token;topup_30=30元/1500万token;' +
+  'topup_50=50元/2500万token;topup_100=100元/5000万token'
 
 async function loadTopup(deps: PayToolDeps, pack: string): Promise<TopupInfo> {
   try {
@@ -276,9 +276,9 @@ export function createPayTools(deps: PayToolDeps) {
     parameters: {
       pack: {
         type: 'string',
-        enum: ['topup_10', 'topup_30', 'topup_70', 'topup_160'],
+        enum: ['topup_10', 'topup_30', 'topup_50', 'topup_100'],
         required: true,
-        description: '加油包档位:topup_10(10元/120万) topup_30(30元/360万) topup_70(70元/850万) topup_160(160元/2000万)',
+        description: '加油包档位:topup_10(10元/500万) topup_30(30元/1500万) topup_50(50元/2500万) topup_100(100元/5000万)',
       },
       pay_type: {
         type: 'string',
