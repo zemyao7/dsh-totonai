@@ -26,11 +26,25 @@
 
 ## 安装
 
-### 从插件市场安装(推荐)
+### 方式一:在 DSH 里添加插件(推荐)
 
-在 DSH「插件 → 插件市场 → 发现」搜索 `totonai` 或 `ToTonAI`,点安装,重启 DeepSeek Harness。
+1. 打开 DeepSeek Harness,进「插件」页
+2. 点「添加插件」,输入 `dsh-totonai`
+3. 点安装,按提示重启 DeepSeek Harness
+4. 进「设置 → ToTonAI」面板,登录或注册
 
-### 命令行安装
+搜不到时可以换成 `ToTonAI`、`totonai`,或者搜 `GPT`、`Claude`、`DeepSeek`——这几个词都在插件描述里。
+
+### 方式二:WorkBuddy 接入
+
+1. 打开 www.toton.pro 注册账号
+2. 左下角用户一栏,点「我的 API Key」
+3. 最下方点「下载 WorkBuddy 接入包(已含我的 Key)」
+4. 打开 WorkBuddy → 设置 → 模型,就能用
+
+### 其他方式(进阶)
+
+命令行安装(DSH):
 
 ```bash
 # npm 源
@@ -42,7 +56,7 @@ dsh plugin --profile desktop add zemyao7/dsh-totonai
 
 `--profile` 换成自己的 profile 名:桌面客户端默认是 `desktop`,浏览器版通常是 `web`。
 
-### 本地安装(开发/自用)
+本地安装(开发/自用):
 
 ```bash
 # 在插件目录打包
@@ -95,9 +109,6 @@ dsh plugin --profile desktop add ./dsh-totonai-0.1.5.tgz
 模型会调用 `totonai_recharge` 返回金额、订单号和收款码链接;按金额付款,备注写上你的用户名,回来说"已付款",模型调用 `totonai_pay_claim` 把申报提交给站长。站长核对到账后开通,一般 5 分钟内生效;之后说"查一下会员状态",模型读取你的账号确认档位。
 
 > 说明:站点使用个人收款码,没有自动回调,开通由站长人工确认,这是当前设计的正常流程,不是故障。
-
-> **WorkBuddy 用户看这里** → 直接进 [workbuddy/](workbuddy/)，双击 `.cmd` 即可，不用点「添加模型」、不用填 JSON。
-> 本插件、以及 WorkBuddy 接入包，都需要 **www.toton.pro** 账号（免费注册，注册后在「我的 API Key」里复制 Key）。
 
 ## 会员档位与额度
 
