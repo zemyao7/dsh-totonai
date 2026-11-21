@@ -3,8 +3,8 @@ import type { LlmModelInfo } from '@deepseek-ai/dsh-llm'
 /**
  * ToTonAI 中转站模型目录。
  *
- * 与后端 proxy.py 的 ALL_MODEL_LIST 保持一致的模型 id,请求时原样透传给中转站。
- * 过滤掉了生图模型(gpt-image-* / *-image 等):DSH 的对话流不承载生图,
+ * 与后端 proxy_new.py 的文本模型 id 保持一致,请求时原样透传给中转站。
+ * 过滤掉了生图模型(gpt-image-* / seedream / *-image 等):DSH 的对话流不承载生图,
  * 生图请继续在 ToTonAI 网页使用。
  *
  * 如站点模型有增减,同步改这里即可。
@@ -12,6 +12,9 @@ import type { LlmModelInfo } from '@deepseek-ai/dsh-llm'
 const TEXT_MODEL_IDS = [
   // OpenAI
   'openai/gpt-6.1-sol',
+  'openai/gpt-6.1-terra',
+  'openai/gpt-6.2-sol',
+  'openai/gpt-6.2-astra',
   'openai/gpt-6-sol',
   'openai/gpt-6-luna',
   'openai/gpt-5.6-sol',
@@ -22,33 +25,27 @@ const TEXT_MODEL_IDS = [
   'openai/gpt-5.4',
   'openai/gpt-5.4-mini',
   'openai/gpt-5.4-nano',
-  'openai/gpt-5.3-codex',
-  'openai/gpt-5.2-codex',
-  'openai/gpt-5.2-chat',
   'openai/gpt-5.2',
-  'openai/gpt-5-pro',
   'openai/gpt-5-nano',
   'openai/gpt-5-mini',
   'openai/gpt-5',
-  'gpt-oss-120b',
   // Anthropic
   'anthropic/claude-opus-5.5',
   'anthropic/claude-sonnet-5.5',
   'anthropic/claude-haiku-5.5',
   'anthropic/claude-opus-5',
   'anthropic/claude-sonnet-5',
-  'anthropic/claude-fable-5',
+  'anthropic/claude-fable-5.2',
   'anthropic/claude-4.8-opus',
   'anthropic/claude-4.7-opus',
   'claude-4.6-opus',
   'claude-4.6-sonnet',
-  'claude-4.5-opus',
-  'claude-4.5-sonnet',
   'claude-4.5-haiku',
   // Google Gemini
   'google/gemini-4-argon',
+  'google/gemini-4-carbon',
+  'google/gemini-4-hydrogen',
   'google/gemini-3.7-flash',
-  'google/gemini-3.6-flash',
   'google/gemini-3.5-flash',
   'google/gemini-3.5-flash-lite',
   'google/gemini-3.1-flash-lite',
@@ -62,15 +59,11 @@ const TEXT_MODEL_IDS = [
   'deepseek/deepseek-v4-pro',
   'deepseek/deepseek-v4-flash-20260731',
   'deepseek/deepseek-v4-pro-0813',
-  'deepseek/deepseek-v3.2-251201',
   // Bytedance
   'bytedance/doubao-seed-2-1-pro',
   'bytedance/doubao-seed-2-1-turbo',
-  'doubao-seed-2.0-pro',
   'doubao-seed-2.0-mini',
   'doubao-seed-2.0-lite',
-  'doubao-seed-2.0-code',
-  'doubao-1.5-pro-32k',
   // X-AI Grok
   'x-ai/grok-4.7',
   'x-ai/grok-4.6',

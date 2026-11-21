@@ -63,9 +63,11 @@ async function doStatus(deps: PanelDeps): Promise<PanelResult> {
   const am = info.allow_models
   const allowed: number = Array.isArray(am) ? am.length : am === '*' ? -1 : 0
   const active = level !== 'free' && (expireTs === 0 || expireTs > Math.floor(Date.now() / 1000))
-  // 额度:月额度 + 加油包,都是站点 /api/user_info 直接下发的真实数字
-  const quotaTotal = Number(info.quota_total ?? info.token_quota ?? 0)
+  // 套餐周期额度、自然月统计与加油包余额分别展示；具体数值来自站点 /api/user_info
+  const monthlyQuota = Number(info.token_quota ?? 0)
   const used = Number(info.used_token ?? 0)
+  const monthlyUsed = Number(info.monthly_used ?? info.used_token_month ?? used)
+  const quotaTotal = Number(info.quota_total ?? monthlyQuota)
   const remain = Number(info.quota_remaining ?? Math.max(0, quotaTotal - used))
   const bonusTotal = Number(info.bonus_token ?? 0)
   const bonusUsed = Number(info.bonus_used ?? 0)
@@ -85,11 +87,14 @@ async function doStatus(deps: PanelDeps): Promise<PanelResult> {
     isFree: level === 'free',
     quota: {
       total: quotaTotal,
+      monthly: monthlyQuota,
       used,
+      monthlyUsed,
       remain,
       bonus,
       bonusDays,
       resetDays,
+      overdrawn: Number(info.overflow_used ?? 0),
     },
     baseURL: deps.baseURL,
     qr: {

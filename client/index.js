@@ -145,28 +145,33 @@ window.__ModuleLoader__.load({
       return String(Math.round(n))
     }
 
-    /** 会员卡片里的额度行:月额度 + 加油包余额 */
+    /** 会员卡片:周期抵扣额度、自然月统计与加油包余额分开展示 */
     function quotaLines(d) {
       const q = d.quota || {}
-      const total = Number(q.total || 0)
+      const total = Number(q.monthly ?? q.total ?? 0)
       const used = Number(q.used || 0)
+      const monthlyUsed = Number(q.monthlyUsed ?? used)
       const remain = Number(q.remain || 0)
       const lines = []
       if (total > 0) {
         lines.push(
           h('div', { key: 'q1' },
-            (d.isFree ? L('免费体验额度: ', 'Trial credit: ') : L('本月额度: ', 'This month: ')) +
+            (d.isFree ? L('免费体验抵扣额度: ', 'Trial credit: ') : L('本周期抵扣额度: ', 'Current-cycle credit: ')) +
             L('已用 ', 'used ') + fmtTok(used) + ' / ' + fmtTok(total) +
-            L(' token,剩 ', ' token, left ') + fmtTok(remain) + ' token' +
-            (!d.isFree && Number(q.resetDays || 0) > 0 ? L(',', '') + ' ' + Number(q.resetDays) + L(' 天后重置', ' days to reset') : '')),
+            (d.isFree ? '' : L('（自然月统计 ', ' (calendar month ') + fmtTok(monthlyUsed) + L('）', ')')) +
+            L(' 抵扣额度,剩 ', ' credit, left ') + fmtTok(remain) + ' 抵扣额度' +
+            (!d.isFree && Number(q.resetDays || 0) > 0 ? L(',', '') + ' ' + Number(q.resetDays) + L(' 天后恢复', ' days to reset') : '')),
         )
       } else if (!d.active) {
         lines.push(h('div', { key: 'q1' }, L('暂无可用额度,充值后开始计费。', 'No credit yet — recharge to start.')))
       }
+      if (Number(q.overdrawn || 0) > 0) {
+        lines.push(h('div', { key: 'q-overdrawn', style: { marginTop: 2, color: C.warn } }, L('检测到少量并发超额用量: ', 'Concurrent overage detected: ') + fmtTok(q.overdrawn) + L(' 抵扣额度，已停止后续请求。', ' credits. Further requests are blocked.')))
+      }
       if (Number(q.bonus || 0) > 0) {
         lines.push(
           h('div', { key: 'q2', style: { marginTop: 2 } },
-            L('加油包余额: ', 'Top-up credit: ') + fmtTok(q.bonus) + ' token' +
+            L('加油包余额: ', 'Top-up credit: ') + fmtTok(q.bonus) + ' 抵扣额度' +
             (Number(q.bonusDays || 0) > 0 ? ' (' + Number(q.bonusDays) + L(' 天后到期)', ' days left)') : '')),
         )
       } else {
@@ -192,7 +197,7 @@ window.__ModuleLoader__.load({
           ? h('div', { key: 'kv', style: Object.assign({}, S.kv, { marginTop: 8 }) }, d.allowed === -1
               ? L('当前档位可用全部模型。', 'All models available on your plan.')
               : L('当前档位可用 ', 'Models available: ') + (d.allowed || 0) + L(' 个模型;模型选择器里能看到全部模型,标了「需升级」的就是当前档位调不了的,升级后即可解锁。', ' — locked ones are marked "需升级" in the picker.'))
-          : h('div', { key: 'kv', style: Object.assign({}, S.kv, { marginTop: 8 }) }, L('当前是免费档:可用 10 个免费模型,并赠送 30 万 token 体验额度,用完为止(不按月重置)。', 'Free tier: 10 free models plus a one-off 300k token trial credit.')),
+          : h('div', { key: 'kv', style: Object.assign({}, S.kv, { marginTop: 8 }) }, L('当前是免费档:可用 10 个免费模型,并赠送 30 万抵扣额度体验,用完为止(不按月重置)。', 'Free tier: 10 free models plus a one-off 300k trial credit balance.')),
         h('div', { key: 'quota', style: Object.assign({}, S.kv, { marginTop: 6 }) }, quotaLines(d)),
         h('div', { key: 'act', style: { marginTop: 10, display: 'flex', gap: 8 } }, [
           h('button', { key: 'r', type: 'button', style: S.btn, disabled: refreshing, onClick: async () => { setRefreshing(true); try { await props.onRefresh() } finally { setRefreshing(false) } } }, refreshing ? L('刷新中…', 'Refreshing…') : L('刷新状态', 'Refresh')),
@@ -307,7 +312,7 @@ window.__ModuleLoader__.load({
                   onClick: () => setPick(Object.assign({}, pick, { level: k })),
                 }, [
                   h('div', { key: 'n', style: { fontSize: 12, fontWeight: 600 } }, t.display_name || k),
-                  h('div', { key: 'p', style: { fontSize: 11, color: C.sub, marginTop: 3 } }, '¥' + (t.price || 0) + ' / ' + fmtTok(t.tokens) + ' token'),
+                  h('div', { key: 'p', style: { fontSize: 11, color: C.sub, marginTop: 3 } }, '¥' + (t.price || 0) + ' / ' + fmtTok(t.tokens) + ' 抵扣额度'),
                 ])
               })),
             ])

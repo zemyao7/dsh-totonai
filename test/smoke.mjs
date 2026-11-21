@@ -165,6 +165,7 @@ async function collect(adapter, options) {
       ])
       assert.equal(body.model, 'openai/gpt-5.4')
       assert.equal(body.stream, true)
+      assert.deepEqual(body.stream_options, { include_usage: true })
       assert.equal(body.max_tokens, 4096)
       assert.equal(body.temperature, 0.7)
       assert.equal(body.tools.length, 1)
@@ -357,7 +358,7 @@ async function collect(adapter, options) {
       return jsonResponse(200, { ok: true, msg: '注册成功,请登录' })
     }
     if (entry.url === BASE + '/api/user_info') {
-      return jsonResponse(200, { ok: true, username: 'demo', level: 'free', token_quota: 0, used_token: 0 })
+      return jsonResponse(200, { ok: true, username: 'demo', level: 'pro', expire_ts: 0, allow_models: ['openai/gpt-6-luna'], token_quota: 40_000_000, used_token: 12_000_000, quota_total: 45_000_000, quota_remaining: 25_000_000, bonus_token: 5_000_000, bonus_used: 0, bonus_expire_ts: 0, quota_reset_ts: Math.floor(Date.now() / 1000) - 86400, overflow_used: 123, used_token_month: 2_000_000 })
     }
     if (entry.url === BASE + '/api/package_config') {
       return jsonResponse(200, {
@@ -403,7 +404,15 @@ async function collect(adapter, options) {
   assert.equal(status.ok, true)
   assert.equal(status.loggedIn, true)
   assert.equal(status.username, 'demo')
-  assert.equal(status.active, false)
+  assert.equal(status.active, true)
+  assert.equal(status.quota.total, 45_000_000)
+  assert.equal(status.quota.monthly, 40_000_000)
+  assert.equal(status.quota.used, 12_000_000)
+  assert.equal(status.quota.monthlyUsed, 2_000_000)
+  assert.equal(status.quota.remain, 25_000_000)
+  assert.equal(status.quota.bonus, 5_000_000)
+  assert.equal(status.quota.overdrawn, 123)
+  assert.equal(status.quota.resetDays, 29)
   assert.ok(status.qr.wechat.endsWith('/qrcode/wechat'))
 
   // 6.4 报价:透传站点 packages

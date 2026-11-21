@@ -24,11 +24,11 @@ const FALLBACK_TIERS: Record<string, TierInfo> = {
 }
 
 const TIER_TEXT =
-  'entry=Go(27元/月,307元/年,1500万token/月);' +
-  'pro=Plus(77元/月,847元/年,4000万token/月);' +
-  'ultimate=Pro Max(177元/月,2077元/年,11000万token/月)'
+  'entry=Go(27元/月,307元/年,1500万抵扣额度/月);' +
+  'pro=Plus(77元/月,847元/年,4000万抵扣额度/月);' +
+  'ultimate=Pro Max(177元/月,2077元/年,11000万抵扣额度/月)'
 
-/** 加油包兜底值:只加 token 额度,不加模型权限,90 天有效 */
+/** 加油包兜底值:只加抵扣额度,不加模型权限,90 天有效 */
 interface TopupInfo {
   display_name: string
   price: number
@@ -36,15 +36,15 @@ interface TopupInfo {
 }
 
 const FALLBACK_TOPUPS: Record<string, TopupInfo> = {
-  topup_10: { display_name: '加油包 500万 token', price: 10, tokens: 5_000_000 },
-  topup_30: { display_name: '加油包 1500万 token', price: 30, tokens: 15_000_000 },
-  topup_50: { display_name: '加油包 2500万 token', price: 50, tokens: 25_000_000 },
-  topup_100: { display_name: '加油包 5000万 token', price: 100, tokens: 50_000_000 },
+  topup_10: { display_name: '加油包 500万抵扣额度', price: 10, tokens: 5_000_000 },
+  topup_30: { display_name: '加油包 1500万抵扣额度', price: 30, tokens: 15_000_000 },
+  topup_50: { display_name: '加油包 2500万抵扣额度', price: 50, tokens: 25_000_000 },
+  topup_100: { display_name: '加油包 5000万抵扣额度', price: 100, tokens: 50_000_000 },
 }
 
 const TOPUP_TEXT =
-  'topup_10=10元/500万token;topup_30=30元/1500万token;' +
-  'topup_50=50元/2500万token;topup_100=100元/5000万token'
+  'topup_10=10元/500万抵扣额度;topup_30=30元/1500万抵扣额度;' +
+  'topup_50=50元/2500万抵扣额度;topup_100=100元/5000万抵扣额度'
 
 async function loadTopup(deps: PayToolDeps, pack: string): Promise<TopupInfo> {
   try {
@@ -269,16 +269,16 @@ export function createPayTools(deps: PayToolDeps) {
   const topup = defineTool({
     name: 'totonai_topup',
     description:
-      '为当前 ToTonAI 账号加购加油包:只增加 token 额度,不改变模型权限,额度 90 天有效,月额度用完时自动接着扣。' +
+      '为当前 ToTonAI 账号加购加油包:只增加抵扣额度,不改变模型权限,加油包额度 90 天有效,套餐额度用完时自动接着扣。' +
       `档位:${TOPUP_TEXT}。` +
-      '用户说"额度不够了""加个加油包""再买点 token"时调用。' +
+      '用户说"额度不够了""加个加油包""再买点抵扣额度"时调用。' +
       '注意:站点使用个人收款码,需用户按金额转账并在备注写明用户名,由站长核对后手动加额度,没有自动回调。',
     parameters: {
       pack: {
         type: 'string',
         enum: ['topup_10', 'topup_30', 'topup_50', 'topup_100'],
         required: true,
-        description: '加油包档位:topup_10(10元/500万) topup_30(30元/1500万) topup_50(50元/2500万) topup_100(100元/5000万)',
+        description: '加油包档位，数字单位为抵扣额度:topup_10(10元/500万) topup_30(30元/1500万) topup_50(50元/2500万) topup_100(100元/5000万)',
       },
       pay_type: {
         type: 'string',
@@ -447,7 +447,7 @@ export function createPayTools(deps: PayToolDeps) {
   const payStatus = defineTool({
     name: 'totonai_pay_status',
     description:
-      '查询当前 ToTonAI 账号的会员状态:档位、总额度、已用额度、是否已开通。' +
+      '查询当前 ToTonAI 账号的会员状态:套餐周期额度、自然月统计、加油包余额及是否已开通。' +
       '用户付款后想确认是否开通,或想知道剩余额度时调用。',
     parameters: {},
     output: {
@@ -461,10 +461,15 @@ export function createPayTools(deps: PayToolDeps) {
           display_name: { type: 'string' },
           token_quota: { type: 'number' },
           used_token: { type: 'number' },
+          used_token_month: { type: 'number' },
+          monthly_used: { type: 'number' },
           quota_total: { type: 'number' },
           quota_remaining: { type: 'number' },
           bonus_token: { type: 'number' },
+          bonus_used: { type: 'number' },
           bonus_expire_ts: { type: 'number' },
+          quota_reset_ts: { type: 'number' },
+          overflow_used: { type: 'number' },
           is_free: { type: 'boolean' },
           msg: { type: 'string' },
         },
@@ -477,14 +482,14 @@ export function createPayTools(deps: PayToolDeps) {
         const quota = Number(value.quota_total ?? value.token_quota ?? 0)
         const used = Number(value.used_token ?? 0)
         const remain = Number(value.quota_remaining ?? Math.max(0, quota - used))
-        const bonus = Math.max(0, Number(value.bonus_token ?? 0))
+        const bonus = Math.max(0, Number(value.bonus_token ?? 0) - Number(value.bonus_used ?? 0))
         const bonusTs = Number(value.bonus_expire_ts ?? 0)
         const bonusDays = bonus > 0 && bonusTs > 0 ? Math.max(0, Math.ceil((bonusTs - Date.now() / 1000) / 86400)) : 0
         if (value.is_free && quota > 0) {
           return textBlock(
             [
               `账号 ${value.username ?? ''} 当前是免费档,可用 10 个免费模型。`,
-              `免费体验额度 ${formatTokens(quota)} token,已用 ${formatTokens(used)} token,剩余约 ${formatTokens(remain)} token。`,
+              `免费体验抵扣额度 ${formatTokens(quota)},已用 ${formatTokens(used)},剩余约 ${formatTokens(remain)}。`,
               '免费额度是一次性的,用完为止不按月重置;想解锁全部模型请开通包月。',
             ].join('\n'),
           )
@@ -493,10 +498,12 @@ export function createPayTools(deps: PayToolDeps) {
           return textBlock(
             [
               `账号 ${value.username ?? ''} 已开通 ${value.display_name ?? value.level ?? ''}。`,
-              `本月额度 ${formatTokens(quota)} token,已用 ${formatTokens(used)} token,剩余约 ${formatTokens(remain)} token。`,
+              `当前套餐额度 ${formatTokens(Number(value.token_quota ?? quota))},本周期已用 ${formatTokens(Number(value.used_token ?? 0))};自然月统计已用 ${formatTokens(Number(value.monthly_used ?? value.used_token_month ?? 0))};含加油包可用抵扣额度约 ${formatTokens(remain)}。`,
+              '套餐额度按开通/重置周期恢复（后端周期为 30 天），不是自然月月初统一清零；抵扣额度按模型输入/输出 Token 系数换算。',
+              Number(value.overflow_used ?? 0) > 0 ? `历史并发超额记录 ${formatTokens(Number(value.overflow_used))} 抵扣额度。` : '',
               bonus > 0
-                ? `加油包余额 ${formatTokens(bonus)} token${bonusDays > 0 ? `(${bonusDays} 天后到期)` : ''},额度用完时自动接着扣。`
-                : '没有加油包余额;额度不够可以说"加个加油包",只加额度、不加模型权限。',
+                ? `加油包余额 ${formatTokens(bonus)} 抵扣额度${bonusDays > 0 ? `(${bonusDays} 天后到期)` : ''},套餐额度用完时自动接着扣。`
+                : '没有加油包余额;额度不够可以说"加个加油包",只加抵扣额度、不加模型权限。',
             ].join('\n'),
           )
         }
@@ -523,9 +530,14 @@ export function createPayTools(deps: PayToolDeps) {
           display_name: level === 'free' ? (quota > 0 ? '免费体验' : '未开通') : FALLBACK_TIERS[level]?.display_name ?? level,
           token_quota: quota,
           used_token: Number(data?.used_token ?? 0),
+          used_token_month: Number(data?.used_token_month ?? 0),
+          monthly_used: Number(data?.monthly_used ?? data?.used_token_month ?? 0),
           quota_total: Number(data?.quota_total ?? quota),
           quota_remaining: Number(data?.quota_remaining ?? Math.max(0, quota - Number(data?.used_token ?? 0))),
-          bonus_token: Math.max(0, Number(data?.bonus_token ?? 0) - Number(data?.bonus_used ?? 0)),
+          quota_reset_ts: Number(data?.quota_reset_ts ?? 0),
+          overflow_used: Number(data?.overflow_used ?? 0),
+          bonus_token: Number(data?.bonus_token ?? 0),
+          bonus_used: Number(data?.bonus_used ?? 0),
           bonus_expire_ts: Number(data?.bonus_expire_ts ?? 0),
           is_free: level === 'free',
           msg: String(data?.msg ?? ''),
@@ -539,9 +551,14 @@ export function createPayTools(deps: PayToolDeps) {
           display_name: '',
           token_quota: 0,
           used_token: 0,
+          used_token_month: 0,
+          monthly_used: 0,
           quota_total: 0,
           quota_remaining: 0,
+          quota_reset_ts: 0,
+          overflow_used: 0,
           bonus_token: 0,
+          bonus_used: 0,
           bonus_expire_ts: 0,
           is_free: false,
           msg: String((e as Error)?.message ?? ''),

@@ -12,13 +12,29 @@ import {
   type StreamChunk,
   type TokenUsage,
 } from '@deepseek-ai/dsh-llm'
-import { ApiError } from './api.js'
+import { ApiError, apiJson } from './api.js'
 import type { TotonAiConfig } from './config.js'
 import { DEFAULT_CONTEXT_WINDOW, DEFAULT_MAX_TOKENS, TOTONAI_MODELS } from './models.js'
 import type { TokenStore } from './token.js'
 
 /** 中转站 Chat Completions 端点(OpenAI 兼容) */
 const CHAT_PATH = '/v1/chat/completions'
+
+/** 档位可用模型集合的缓存时长(毫秒):模型选择器会被反复调用,避免每次都打接口 */
+const ACCESS_CACHE_MS = 60_000
+
+/**
+ * 带工具调用(tools)时会被上游直接拒绝的模型(实测得到,固定 400)。
+ * 这类模型在 DSH / Codex 等带工具的客户端里无法使用,只能在网页端纯聊天场景用。
+ */
+const TOOLS_UNSUPPORTED_MODEL_IDS = ['openai/gpt-5-mini']
+
+const TOOLS_UNSUPPORTED_NOTE =
+  '该模型带工具调用时会被上游拒绝(HTTP 400),在 DSH 这类客户端里无法使用;请到 www.toton.pro 网页端使用,或改用其他模型。'
+
+function markUnsupported(m: LlmModelInfo): LlmModelInfo {
+  return { ...m, name: `${m.name} · 仅网页可用`, description: TOOLS_UNSUPPORTED_NOTE }
+}
 
 /**
  * ToTonAI 中转站适配器。
@@ -28,6 +44,9 @@ const CHAT_PATH = '/v1/chat/completions'
  * 鉴权统一使用 /login 换取的 Bearer 令牌,401 时自动重登重试一次。
  */
 export class TotonAiAdapter extends LlmAdapter {
+  /** 当前账号可用模型集合缓存;ids 为 null 表示不限制(未登录/全放行/接口异常) */
+  private accessCache: { user: string; ids: Set<string> | null; at: number } | null = null
+
   constructor(
     private readonly config: TotonAiConfig,
     private readonly tokens: TokenStore,
@@ -40,7 +59,51 @@ export class TotonAiAdapter extends LlmAdapter {
   }
 
   async listModels(): Promise<LlmModelInfo[]> {
-    return TOTONAI_MODELS
+    const allow = await this.allowedModelIds()
+    if (!allow) {
+      // 未登录或不限制(全放行):不判档位,但"带工具必挂"的模型仍要标出来
+      return TOTONAI_MODELS.map((m) =>
+        TOOLS_UNSUPPORTED_MODEL_IDS.includes(m.id) ? markUnsupported(m) : m,
+      )
+    }
+    // 全部模型都出现在选择器里(方便用户看到站点能力),无权限的追加「需升级」标记。
+    // DSH 的 LlmModelInfo 没有 disabled 字段,无法真置灰,只能用名称标记。
+    return TOTONAI_MODELS.map((m) => {
+      if (TOOLS_UNSUPPORTED_MODEL_IDS.includes(m.id)) return markUnsupported(m)
+      if (allow.has(m.id)) return m
+      return {
+        ...m,
+        name: `${m.name} · 需升级`,
+        description: '当前会员档位不含该模型,升级套餐后即可调用。',
+      }
+    })
+  }
+
+  /**
+   * 读取当前账号的可用模型集合,只把有权限的模型暴露给 DSH 的模型选择器。
+   * 返回 null 表示不限制:未登录、接口异常或账号为 "*" 全放行模式。
+   * 结果缓存 60 秒;遇到 403 时缓存会被清空以便立刻刷新。
+   */
+  private async allowedModelIds(): Promise<Set<string> | null> {
+    const user = this.tokens.currentUser
+    const now = Date.now()
+    if (this.accessCache && this.accessCache.user === user && now - this.accessCache.at < ACCESS_CACHE_MS) {
+      return this.accessCache.ids
+    }
+    let ids: Set<string> | null = null
+    try {
+      if (this.tokens.hasCredentials) {
+        const token = await this.tokens.ensure()
+        const info = await apiJson(this.config.baseURL, '/api/user_info', { token, timeoutMs: 15_000 })
+        const am = info?.allow_models
+        if (Array.isArray(am)) ids = new Set(am.map((x: unknown) => String(x)))
+        else if (am === '*') ids = null
+      }
+    } catch {
+      ids = null
+    }
+    this.accessCache = { user, ids, at: now }
+    return ids
   }
 
   async resolveModel(
@@ -115,7 +178,39 @@ export class TotonAiAdapter extends LlmAdapter {
         /* 忽略读取失败 */
       }
       if (res.status === 401) throw new ApiError('令牌失效', 401)
+      if (res.status === 403) {
+        // 档位不含该模型:清掉缓存,下次打开模型选择器就按最新权限重新过滤
+        this.accessCache = null
+        throw new LlmError(
+          `当前档位不包含模型 ${String(body.model ?? '')}:它在模型选择器里标着「需升级」。在 DSH 设置 → ToTonAI 面板升级套餐后即可调用。`,
+          'NO_MODEL',
+          { status: 403 },
+        )
+      }
       throw new LlmError(`ToTonAI 请求失败(${res.status}): ${detail}`, 'BAD_GATEWAY', { status: res.status })
+    }
+    // 上游错误经常被网关以 200 + 普通 JSON(而非 SSE)返回,这里必须识破:
+    // 否则前端会拿到一个没有任何 data: 行的流,只显示"已完成"却没有输出。
+    const ctype = res.headers.get('content-type') ?? ''
+    if (!ctype.includes('event-stream')) {
+      let raw = ''
+      try {
+        raw = (await res.text()).slice(0, 600)
+      } catch {
+        /* 忽略读取失败 */
+      }
+      let msg = raw
+      try {
+        const j = JSON.parse(raw)
+        msg = String(j?.error?.message ?? j?.msg ?? raw)
+      } catch {
+        /* 非 JSON,原样用 */
+      }
+      throw new LlmError(
+        `上游拒绝了这次请求:${msg.slice(0, 300)}。请换一个模型重试,或稍后再试。`,
+        'BAD_GATEWAY',
+        { status: res.status },
+      )
     }
     if (!res.body) {
       throw new LlmError('ToTonAI 返回了空响应体', 'BAD_GATEWAY', { status: res.status })
@@ -152,6 +247,12 @@ export class TotonAiAdapter extends LlmAdapter {
             evt = JSON.parse(payload)
           } catch {
             continue
+          }
+          // 网关用 SSE 帧转述上游错误时,直接抛出来,别当成"空回复"吞掉
+          if (evt && typeof evt === 'object' && evt.error) {
+            const em = evt.error as any
+            const text = String(em?.message ?? (typeof em === 'string' ? em : JSON.stringify(em)))
+            throw new LlmError(`上游错误: ${text.slice(0, 300)}`, 'BAD_GATEWAY', { status: res.status })
           }
           if (!evt || !Array.isArray(evt.choices) || evt.choices.length === 0) {
             // 部分网关流式末尾会推 usage-only 帧
@@ -228,6 +329,7 @@ export class TotonAiAdapter extends LlmAdapter {
         yield { type: 'finish', reason: { kind: 'aborted', failure: { message: '请求已取消', code: 'ABORTED' } } }
         return
       }
+      if (e instanceof LlmError) throw e
       throw new LlmError(`ToTonAI 流式响应中断: ${e instanceof Error ? e.message : String(e)}`, 'STREAM_ERROR')
     } finally {
       try {
@@ -238,6 +340,13 @@ export class TotonAiAdapter extends LlmAdapter {
     }
 
     // 收尾:关闭所有未结束的输出块
+    if (!textBlock && !reasoningBlock && toolBlocks.size === 0) {
+      throw new LlmError(
+        '上游返回了空回复(既没有文字也没有工具调用)。请换一个模型重试,常见原因是该模型在上游渠道异常。',
+        'BAD_GATEWAY',
+        { status: res.status },
+      )
+    }
     if (textBlock) {
       yield {
         type: 'block-end',
@@ -298,6 +407,9 @@ function buildRequestBody(options: GenerateOptions): Record<string, unknown> {
     model: options.model,
     messages,
     stream: true,
+    // OpenAI 兼容代理仅在 stream_options.include_usage=true 时返回流式 usage。
+    // 后端据此用真实 prompt/completion tokens 计费；若无 usage 会退回近似估算。
+    stream_options: { include_usage: true },
   }
   if (typeof options.temperature === 'number') body.temperature = options.temperature
   if (typeof options.maxTokens === 'number') body.max_tokens = options.maxTokens
