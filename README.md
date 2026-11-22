@@ -2,7 +2,7 @@
 
 把中转站接进 DeepSeek Harness \ WorkBuddy的插件。
 
-> 支持 **GPT / ChatGPT / Claude / Gemini / DeepSeek / DouBao / Grok / GLM** 等多家主流模型。
+> 支持 **GPT / Claude / Gemini / DeepSeek / DouBao / Grok / GLM** 等多家主流模型。
 > 不封号、不翻墙、可直充。
 
 ## 安装
