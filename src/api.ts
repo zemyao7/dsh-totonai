@@ -1,4 +1,5 @@
 import { attributionHeaders } from '@deepseek-ai/dsh-llm'
+import { autoProxy } from './proxy.js'
 
 /** 与 ToTonAI 后端交互时的 HTTP 错误 */
 export class ApiError extends Error {
@@ -123,6 +124,7 @@ export async function apiJson(
   let lastError: NetError | null = null
   const tried: string[] = []
   const details: string[] = []
+  let autoTried = false
 
   for (let i = 0; i < targets.length; i++) {
     const url = targets[i]
@@ -177,6 +179,16 @@ export async function apiJson(
       // 超时不换域名重试:再等一轮只会让用户多等一个超时周期
       if (err.code === 'ABORT_ERR') break
       if (!retryable(method, path)) break
+      // 直连不通时,自动找本机常见代理端口接管,然后用同一个地址再试一次
+      if (!autoTried) {
+        autoTried = true
+        const proxied = await autoProxy()
+        if (proxied?.active) {
+          tried.push(`经代理 ${proxied.url}`)
+          i--
+          continue
+        }
+      }
     } finally {
       clearTimeout(timer)
       if (signal) signal.removeEventListener('abort', onOuterAbort)
