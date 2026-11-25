@@ -203,7 +203,14 @@ export function registerPanel(ws: any, deps: PanelDeps): () => void {
         path: PANEL_PATH,
         handler: async (req: any, res: any) => {
           try {
-            if (!sameOrigin(req)) return writeJson(res, 403, fail('来源校验失败', 'ORIGIN'))
+            if (!sameOrigin(req)) {
+              console.warn('[totonai] 来源校验失败', originDetail(req))
+              return writeJson(
+                res,
+                403,
+                fail(`来源校验失败:${originDetail(req)}。若 DSH 是经反向代理/隧道访问的,请让代理保留原始 Host 并转发 X-Forwarded-Host;本机访问请升级到 0.1.17 修复 Chrome 省略回环端口的误判`, 'ORIGIN'),
+              )
+            }
             if (String(req?.method ?? '').toUpperCase() !== 'POST') {
               return writeJson(res, 405, fail('只接受 POST', 'METHOD'))
             }
@@ -235,17 +242,76 @@ export function registerPanel(ws: any, deps: PanelDeps): () => void {
   }
 }
 
-/** 只接受同源调用:有 Origin 时必须与 Host 一致 */
+/** 取 authority 的主机名:保留 IPv6 方括号,丢掉端口 */
+function hostnameOf(authority: string): string {
+  const lower = authority.toLowerCase()
+  if (lower.startsWith('[')) {
+    const end = lower.indexOf(']')
+    return end > 0 ? lower.slice(0, end + 1) : lower
+  }
+  const colon = lower.indexOf(':')
+  return colon >= 0 ? lower.slice(0, colon) : lower
+}
+
+/** 取 authority 的端口:没写端口返回空串 */
+function portOf(authority: string): string {
+  const lower = authority.toLowerCase()
+  if (lower.startsWith('[')) {
+    const end = lower.indexOf(']')
+    const rest = end > 0 ? lower.slice(end + 1) : ''
+    return rest.startsWith(':') ? rest.slice(1) : ''
+  }
+  const colon = lower.indexOf(':')
+  return colon >= 0 ? lower.slice(colon + 1) : ''
+}
+
+function isLoopbackName(name: string): boolean {
+  const n = name.toLowerCase()
+  return n === '127.0.0.1' || n === 'localhost' || n === '[::1]'
+}
+
+/** 把请求里参与来源校验的头摘出来,403 时写进提示与日志,方便用户直接截图报障 */
+export function originDetail(req: any): string {
+  const headers = req?.headers ?? {}
+  const origin = String(headers.origin ?? '(无)') || '(空)'
+  const host = String(headers.host ?? '(无)') || '(空)'
+  const xfh = String(headers['x-forwarded-host'] ?? '')
+  return xfh ? `Origin=${origin} Host=${host} X-Forwarded-Host=${xfh}` : `Origin=${origin} Host=${host}`
+}
+
+/**
+ * 只接受同源调用。规则对齐 DSH 核心 fence 与 dshmarket,不比宿主更严:
+ * 1. 没有 Origin 放行:桌面端进程内代理会剥掉 origin/host(#648),非页面客户端也谈不上跨站;
+ * 2. Origin 空值 / null / 不可解析一律拒:头存在却解析不了,不等于头不存在;
+ * 3. sec-fetch-site: cross-site 一律拒;
+ * 4. Origin 与 Host 完全一致放行;
+ * 5. 反向代理把 Host 改写成上游地址时,Origin 与 X-Forwarded-Host 一致也放行;
+ * 6. 回环地址上 Chrome 151+ 会省略 Origin 端口(DSH #1031),此时只比主机名;
+ *    回环对回环还接受 localhost / 127.0.0.1 混用,但端口必须一致。
+ */
 function sameOrigin(req: any): boolean {
-  const origin = String(req?.headers?.origin ?? '')
-  if (!origin) return true
-  const host = String(req?.headers?.host ?? hostOf(req))
+  const headers = req?.headers ?? {}
+  if (String(headers['sec-fetch-site'] ?? '').toLowerCase() === 'cross-site') return false
+  const rawOrigin = headers.origin
+  if (rawOrigin === undefined || rawOrigin === null) return true
+  const origin = String(rawOrigin)
+  if (!origin || origin === 'null') return false
+  let u: URL
   try {
-    const u = new URL(origin)
-    return !host || u.host === host
+    u = new URL(origin)
   } catch {
     return false
   }
+  const host = String(headers.host ?? hostOf(req) ?? '')
+  if (!host) return true
+  if (u.host === host) return true
+  const forwarded = String(headers['x-forwarded-host'] ?? '').toLowerCase()
+  if (forwarded && u.host === forwarded) return true
+  if (isLoopbackName(hostnameOf(host)) && isLoopbackName(u.hostname)) {
+    if (u.port === '') return true
+    return portOf(host) === u.port
+  }
+  return false
 }
 
 function hostOf(req: any): string {
