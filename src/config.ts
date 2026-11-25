@@ -10,6 +10,8 @@ export interface TotonAiConfig {
   password: string
   /** 非流式请求超时秒数(登录/支付/查单) */
   requestTimeout: number
+  /** HTTP 代理,如 http://127.0.0.1:7890;留空则读 HTTPS_PROXY 环境变量 */
+  proxy: string
 }
 
 export const Config = Schema.object({
@@ -25,4 +27,7 @@ export const Config = Schema.object({
   requestTimeout: Schema.number()
     .default(180)
     .description('非流式请求超时(秒)'),
+  proxy: Schema.string()
+    .default('')
+    .description('HTTP 代理,如 http://127.0.0.1:7890;留空则读 HTTPS_PROXY 环境变量,都没有就走直连'),
 })

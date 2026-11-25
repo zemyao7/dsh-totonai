@@ -1,4 +1,5 @@
 import { ApiError, NetError, apiJson } from './api.js'
+import { proxyState } from './proxy.js'
 import type { TokenStore } from './token.js'
 
 /** 面板 HTTP 路由:挂在 dsh 的 webServer 上,同源请求,先过 dsh 自己的登录 */
@@ -55,13 +56,14 @@ export async function handlePanelAction(deps: PanelDeps, body: any): Promise<Pan
 }
 
 async function doStatus(deps: PanelDeps): Promise<PanelResult> {
+  const proxy = proxyState()
   if (!deps.tokenStore.hasCredentials) {
-    return { ok: true, loggedIn: false, baseURL: deps.baseURL }
+    return { ok: true, loggedIn: false, baseURL: deps.baseURL, proxy: proxy.active ? proxy.url : '' }
   }
   const token = await deps.tokenStore.ensure()
   const info = await apiJson(deps.baseURL, '/api/user_info', { token, timeoutMs: deps.requestTimeoutMs })
   if (!info?.ok) {
-    return { ok: true, loggedIn: false, baseURL: deps.baseURL, msg: String(info?.msg ?? '未登录') }
+    return { ok: true, loggedIn: false, baseURL: deps.baseURL, proxy: proxy.active ? proxy.url : '', msg: String(info?.msg ?? '未登录') }
   }
   const level = String(info.level ?? 'free')
   const expireTs = Number(info.expire_ts ?? 0)
@@ -102,6 +104,7 @@ async function doStatus(deps: PanelDeps): Promise<PanelResult> {
       overdrawn: Number(info.overflow_used ?? 0),
     },
     baseURL: deps.baseURL,
+    proxy: proxy.active ? proxy.url : '',
     qr: {
       wechat: `${deps.baseURL}/qrcode/wechat`,
       alipay: `${deps.baseURL}/qrcode/alipay`,

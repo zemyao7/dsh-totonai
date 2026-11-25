@@ -6,6 +6,7 @@ import { TokenStore } from './token.js'
 import { createPayTools } from './tools.js'
 import { clearCreds, loadCreds, saveCreds } from './creds.js'
 import { registerPanel } from './panel.js'
+import { applyProxy, resolveProxy } from './proxy.js'
 
 export const name = 'dsh-totonai'
 
@@ -22,6 +23,9 @@ export function apply(ctx: Context, config: TotonAiConfig) {
     username: config.username || stored?.username || '',
     password: config.password || stored?.password || '',
   }
+
+  // 受限网络:配置了代理(或环境变量里有)就把 fetch 换成走代理的版本,先于任何请求生效
+  const proxy = applyProxy(resolveProxy(effective.proxy))
 
   const tokens = new TokenStore(effective)
   const adapter = new TotonAiAdapter(effective, tokens)
