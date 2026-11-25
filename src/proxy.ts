@@ -1,3 +1,4 @@
+import { execFile } from 'node:child_process'
 import { ProxyAgent, fetch as undiciFetch } from 'undici'
 
 /**
@@ -66,12 +67,73 @@ const CANDIDATES = [
   'http://127.0.0.1:8080',
   'http://127.0.0.1:8888',
   'http://127.0.0.1:7891',
+  'http://127.0.0.1:9790',
+  'http://127.0.0.1:7899',
+  'http://127.0.0.1:10801',
 ]
 
+/** 常见代理客户端进程名,用来反查它们占了哪些端口 */
+const PROXY_PROC = /clash|mihomo|v2ray|xray|sing-box|singbox|nekoray|qv2ray|verge|shadow|trojan|hysteria|tuic|warp/i
+
+function run(cmd: string, args: string[]): Promise<string> {
+  return new Promise((resolve) => {
+    try {
+      execFile(cmd, args, { windowsHide: true, timeout: 5000, maxBuffer: 4 * 1024 * 1024 }, (err, stdout) =>
+        resolve(err ? '' : String(stdout ?? '')),
+      )
+    } catch {
+      resolve('')
+    }
+  })
+}
+
+/** 解析 tasklist CSV,取出代理相关进程的 PID */
+export function parseProxyPids(tasklistCsv: string): number[] {
+  const pids = new Set<number>()
+  for (const line of tasklistCsv.split(/\r?\n/)) {
+    const cells = (line.match(/"([^"]*)"/g) ?? []).map((s) => s.slice(1, -1))
+    if (cells.length >= 2 && PROXY_PROC.test(cells[0])) {
+      const pid = Number(cells[1])
+      if (pid > 0) pids.add(pid)
+    }
+  }
+  return [...pids]
+}
+
+/** 解析 netstat 输出,取出指定 PID 正在监听的本地端口 */
+export function parseListeningPorts(netstatOut: string, pids: number[]): number[] {
+  const want = new Set(pids)
+  const ports: number[] = []
+  for (const line of netstatOut.split(/\r?\n/)) {
+    const m = line
+      .trim()
+      .match(/^TCP\s+(?:127\.0\.0\.1|0\.0\.0\.0|\[::1?\]|\[::\]):(\d+)\s+\S+\s+LISTENING\s+(\d+)$/i)
+    if (!m) continue
+    const pid = Number(m[2])
+    const port = Number(m[1])
+    if (want.has(pid) && port > 0 && !ports.includes(port)) ports.push(port)
+  }
+  return ports
+}
+
+/** 从正在运行的代理客户端直接反查端口,mihomo/clash 的端口叫什么名字都能找到 */
+export async function discoverProxyPorts(): Promise<number[]> {
+  if (process.platform !== 'win32') return []
+  const pids = parseProxyPids(await run('tasklist', ['/FO', 'CSV', '/NH']))
+  if (!pids.length) return []
+  return parseListeningPorts(await run('netstat', ['-ano', '-p', 'TCP']), pids)
+}
+
 let autoTask: Promise<ProxyState | null> | null = null
+const scans: Array<{ url: string; code: string }> = []
+
+/** 最近一次自动探测的结果,错误为空表示该端口可用 */
+export function lastScan(): Array<{ url: string; code: string }> {
+  return scans.map((s) => ({ ...s }))
+}
 
 /** 用某个代理真的请求一次站点,能通才算可用(避免把无关的本地服务当成代理) */
-async function testProxy(url: string): Promise<boolean> {
+async function testProxy(url: string): Promise<string> {
   let agent: ProxyAgent | null = null
   try {
     agent = new ProxyAgent(url)
@@ -84,9 +146,10 @@ async function testProxy(url: string): Promise<boolean> {
     } catch {
       // 关流失败不影响判定
     }
-    return res.status >= 200 && res.status < 500
-  } catch {
-    return false
+    return res.status >= 200 && res.status < 500 ? '' : `HTTP ${res.status}`
+  } catch (e) {
+    const anyE = e as any
+    return String(anyE?.cause?.code ?? anyE?.code ?? 'ERR')
   } finally {
     try {
       await agent?.close()
@@ -104,14 +167,31 @@ export async function autoProxy(): Promise<ProxyState | null> {
   if (state.active) return state
   if (autoTask) return autoTask
   autoTask = (async () => {
-    for (const candidate of CANDIDATES) {
-      if (await testProxy(candidate)) {
+    // 先按进程反查真实端口(客户把端口改成 9790 这类非标准值时也能命中),再退回常见端口
+    const discovered = (await discoverProxyPorts()).map((p) => `http://127.0.0.1:${p}`)
+    const all = [...new Set([...discovered, ...CANDIDATES])]
+    for (const candidate of all) {
+      const code = await testProxy(candidate)
+      scans.push({ url: candidate, code })
+      if (!code) {
         console.warn('[totonai] 直连失败,自动改用本机代理', candidate)
         return applyProxy(candidate)
       }
     }
-    console.warn('[totonai] 直连失败,且本机没有可用的常见代理端口')
+    console.warn(
+      '[totonai] 直连失败,且本机没有可用的常见代理端口',
+      scans.map((s) => `${s.url} ${s.code}`).join(' | '),
+    )
     return null
   })()
   return autoTask
+}
+
+/** 给报错文案用的一句话总结:让用户截图即可说明本机有没有代理可用 */
+export function scanSummary(): string {
+  if (!scans.length) return ''
+  const usable = scans.find((s) => !s.code)
+  if (usable) return `已切换代理 ${usable.url} 但仍失败`
+  const ports = scans.map((s) => new URL(s.url).port).join(',')
+  return `本机代理端口均不可用 已试 ${ports}`
 }

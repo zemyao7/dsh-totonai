@@ -1,5 +1,8 @@
 import { attributionHeaders } from '@deepseek-ai/dsh-llm'
-import { autoProxy } from './proxy.js'
+import { readFileSync, mkdirSync, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
+import { autoProxy, lastScan, proxyState, scanSummary } from './proxy.js'
 
 /** 与 ToTonAI 后端交互时的 HTTP 错误 */
 export class ApiError extends Error {
@@ -102,6 +105,28 @@ function retryable(method: string, path: string): boolean {
   return !path.startsWith('/api/pay')
 }
 
+/** 读自己的版本号:lib/*.js 与 package.json 同属包根下一层,打包后同样成立 */
+function pkgVersion(): string {
+  try {
+    const raw = readFileSync(new URL('../package.json', import.meta.url), 'utf8')
+    return String(JSON.parse(raw)?.version ?? '')
+  } catch {
+    return ''
+  }
+}
+
+/** 网络失败时落一份诊断文件,用户直接把这个文件发给客服即可,不必敲命令 */
+function writeDiagnose(data: Record<string, unknown>): void {
+  try {
+    const dir = join(homedir(), '.dsh-totonai')
+    mkdirSync(dir, { recursive: true })
+    const lines = Object.entries(data).map(([k, v]) => `${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`)
+    writeFileSync(join(dir, 'diagnose.txt'), lines.join('\n'), 'utf8')
+  } catch {
+    // 写不进去不影响报错
+  }
+}
+
 /**
  * 请求 ToTonAI 后端 JSON 接口。所有请求都带 DSH 归属头(user-agent),
  * 鉴权优先使用 Authorization: Bearer <token>(与后端 /login 换取的令牌一致)。
@@ -198,5 +223,17 @@ export async function apiJson(
   if (!lastError) throw new NetError('连不上 ToTonAI: 未知网络错误', 'NETWORK', path)
   // 换过域名时把两条路径都写出来,用户截图即可定位是哪一段不通
   const suffix = tried.length > 1 ? ` (已尝试 ${tried.join(' / ')})` : ''
-  throw new NetError(`${lastError.message}${suffix}`, lastError.code, details.join(' | '))
+  const summary = scanSummary()
+  const message = `${lastError.message}${suffix}${summary ? ` [${summary}]` : ''}`
+  writeDiagnose({
+    time: new Date().toISOString(),
+    version: pkgVersion(),
+    url: lastError.detail,
+    code: lastError.code,
+    base: baseURL,
+    proxy: proxyState(),
+    scan: lastScan(),
+    tried,
+  })
+  throw new NetError(message, lastError.code, details.join(' | '))
 }

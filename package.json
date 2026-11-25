@@ -1,6 +1,6 @@
 {
   "name": "dsh-totonai",
-  "version": "0.1.20",
+  "version": "0.1.21",
   "description": "登录即用 GPT、Claude、Gemini、DeepSeek 等 65 个主流模型，面板内充值开通，无需改配置。",
   "type": "module",
   "main": "./lib/index.js",
