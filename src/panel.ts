@@ -1,4 +1,4 @@
-import { ApiError, apiJson } from './api.js'
+import { ApiError, NetError, apiJson } from './api.js'
 import type { TokenStore } from './token.js'
 
 /** 面板 HTTP 路由:挂在 dsh 的 webServer 上,同源请求,先过 dsh 自己的登录 */
@@ -44,6 +44,11 @@ export async function handlePanelAction(deps: PanelDeps, body: any): Promise<Pan
   } catch (e) {
     if (e instanceof ApiError) {
       return fail(e.message, e.status === 401 ? 'AUTH' : 'API')
+    }
+    if (e instanceof NetError) {
+      // 网络层失败单独成码,面板直接显示错误码与原因,并留一条主机侧日志
+      console.warn('[totonai] 面板网络失败', { code: e.code, detail: e.detail, baseURL: deps.baseURL })
+      return fail(e.message, 'NETWORK')
     }
     return fail(e instanceof Error ? e.message : String(e), 'ERROR')
   }
