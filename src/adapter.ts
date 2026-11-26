@@ -142,11 +142,12 @@ export class TotonAiAdapter extends LlmAdapter {
     }
   }
 
-  private async *requestStream(
+  /** 建流前的网络与状态码校验:失败给出可判断"值不值得重试"的错误码 */
+  private async openStream(
     options: GenerateOptions,
     token: string,
     body: Record<string, unknown>,
-  ): AsyncGenerator<StreamChunk> {
+  ): Promise<Response> {
     const url = this.config.baseURL + CHAT_PATH
     const headers: Record<string, string> = {
       'content-type': 'application/json',
@@ -163,10 +164,7 @@ export class TotonAiAdapter extends LlmAdapter {
         signal: options.signal,
       })
     } catch (e) {
-      if (options.signal?.aborted) {
-        yield { type: 'finish', reason: { kind: 'aborted', failure: { message: '请求已取消', code: 'ABORTED' } } }
-        return
-      }
+      if (options.signal?.aborted) throw new LlmError('请求已取消', 'ABORTED')
       throw new LlmError(`无法连接 ToTonAI 站点: ${e instanceof Error ? e.message : String(e)}`, 'NETWORK')
     }
 
@@ -215,8 +213,51 @@ export class TotonAiAdapter extends LlmAdapter {
     if (!res.body) {
       throw new LlmError('ToTonAI 返回了空响应体', 'BAD_GATEWAY', { status: res.status })
     }
+    return res
+  }
 
-    const reader = res.body.getReader()
+  private async *requestStream(
+    options: GenerateOptions,
+    token: string,
+    body: Record<string, unknown>,
+  ): AsyncGenerator<StreamChunk> {
+    // 上游 5xx/429 多为"该模型瞬时排队",自动重试两轮即可吃掉大部分偶发失败
+    let res: Response | null = null
+    let lastError: LlmError | null = null
+    const retryableCodes = ['BAD_GATEWAY', 'NETWORK']
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (options.signal?.aborted) {
+        yield { type: 'finish', reason: { kind: 'aborted', failure: { message: '请求已取消', code: 'ABORTED' } } }
+        return
+      }
+      try {
+        res = await this.openStream(options, token, body)
+        break
+      } catch (e) {
+        if (options.signal?.aborted) {
+          yield { type: 'finish', reason: { kind: 'aborted', failure: { message: '请求已取消', code: 'ABORTED' } } }
+          return
+        }
+        if (e instanceof ApiError) throw e
+        if (!(e instanceof LlmError) || !retryableCodes.includes(e.code)) throw e
+        lastError = e
+        if (attempt === 2) break
+        const wait = attempt === 0 ? 800 : 2000
+        console.warn(`[totonai] 上游失败,${wait / 1000} 秒后自动重试`, e.code)
+        await new Promise((r) => setTimeout(r, wait))
+      }
+    }
+    if (!res) {
+      throw new LlmError(
+        `${lastError?.message ?? '上游失败'} (已自动重试 2 次仍失败:通常是该模型上游资源紧张,请等一分钟再试,或在模型选择器换一个模型)`,
+        'BAD_GATEWAY',
+        { status: (lastError as any)?.status },
+      )
+    }
+
+    const bodyStream = res.body
+    if (!bodyStream) throw new LlmError('ToTonAI 返回了空响应体', 'BAD_GATEWAY', { status: res.status })
+    const reader = bodyStream.getReader()
     const decoder = new TextDecoder()
     let buffer = ''
     let nextBlockIndex = 0
