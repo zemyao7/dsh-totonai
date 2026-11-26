@@ -100,6 +100,16 @@ export function parseProxyPids(tasklistCsv: string): number[] {
   return [...pids]
 }
 
+/** 解析 tasklist CSV,取出代理相关进程名(给报错文案用) */
+export function parseProxyNames(tasklistCsv: string): string[] {
+  const names = new Set<string>()
+  for (const line of tasklistCsv.split(/\r?\n/)) {
+    const cells = (line.match(/"([^"]*)"/g) ?? []).map((s) => s.slice(1, -1))
+    if (cells.length >= 2 && PROXY_PROC.test(cells[0])) names.add(cells[0].replace(/\.exe$/i, ''))
+  }
+  return [...names]
+}
+
 /** 解析 netstat 输出,取出指定 PID 正在监听的本地端口 */
 export function parseListeningPorts(netstatOut: string, pids: number[]): number[] {
   const want = new Set(pids)
@@ -116,20 +126,61 @@ export function parseListeningPorts(netstatOut: string, pids: number[]): number[
   return ports
 }
 
+/** tasklist 结果缓存 5 秒,避免一次扫描里重复起进程 */
+let tlCache = { at: 0, text: '' }
+async function tasklistText(): Promise<string> {
+  if (Date.now() - tlCache.at < 5000 && tlCache.text) return tlCache.text
+  const text = await run('tasklist', ['/FO', 'CSV', '/NH'])
+  tlCache = { at: Date.now(), text }
+  return text
+}
+
 /** 从正在运行的代理客户端直接反查端口,mihomo/clash 的端口叫什么名字都能找到 */
 export async function discoverProxyPorts(): Promise<number[]> {
   if (process.platform !== 'win32') return []
-  const pids = parseProxyPids(await run('tasklist', ['/FO', 'CSV', '/NH']))
+  const pids = parseProxyPids(await tasklistText())
   if (!pids.length) return []
   return parseListeningPorts(await run('netstat', ['-ano', '-p', 'TCP']), pids)
 }
 
+/** 本机正在运行的代理客户端名称,mihomo-windows-386 这类会显示成 mihomo-windows-386 */
+export async function listProxyProcs(): Promise<string[]> {
+  if (process.platform !== 'win32') return []
+  return parseProxyNames(await tasklistText())
+}
+
 let autoTask: Promise<ProxyState | null> | null = null
 const scans: Array<{ url: string; code: string }> = []
+let lastProcs: string[] = []
+let lastPorts: number[] = []
+let lastFailAt = 0
+
+/** 本机检测到的代理进程与端口,给报错文案和诊断文件用 */
+export function envReport(): { procs: string[]; ports: number[] } {
+  return { procs: [...lastProcs], ports: [...lastPorts] }
+}
 
 /** 最近一次自动探测的结果,错误为空表示该端口可用 */
 export function lastScan(): Array<{ url: string; code: string }> {
   return scans.map((s) => ({ ...s }))
+}
+
+/** 记录一次直连失败:后台守护据此开始/继续寻找代理 */
+export function noteFailure(): void {
+  lastFailAt = Date.now()
+}
+
+/** 代理还在但连不通(客户关了/换了加速器):退回直连状态,让下一轮重新探测 */
+export function markProxyDead(): void {
+  if (!state.active) return
+  state = { active: false, url: state.url, error: `代理 ${state.url} 已不可用` }
+  resetAuto()
+}
+
+/** 清掉"已扫描过"的缓存,允许重新探测(代理可能刚被打开或换了端口) */
+export function resetAuto(): void {
+  autoTask = null
+  scans.length = 0
 }
 
 /** 用某个代理真的请求一次站点,能通才算可用(避免把无关的本地服务当成代理) */
@@ -161,37 +212,65 @@ async function testProxy(url: string): Promise<string> {
 
 /**
  * 直连失败后自动找一个能用的本地代理并接管。
- * 只在第一次失败时扫描,结果缓存:找到就切换,找不到就不再重复试(避免每次登录都等一轮)。
+ * 先按进程反查真实端口(mihomo/clash 把端口改成 9790 这类也能命中),再退回常见端口;
+ * 全部端口并行探测,最坏情况也只等一个超时周期。
  */
 export async function autoProxy(): Promise<ProxyState | null> {
   if (state.active) return state
   if (autoTask) return autoTask
   autoTask = (async () => {
-    // 先按进程反查真实端口(客户把端口改成 9790 这类非标准值时也能命中),再退回常见端口
-    const discovered = (await discoverProxyPorts()).map((p) => `http://127.0.0.1:${p}`)
-    const all = [...new Set([...discovered, ...CANDIDATES])]
-    for (const candidate of all) {
-      const code = await testProxy(candidate)
-      scans.push({ url: candidate, code })
-      if (!code) {
-        console.warn('[totonai] 直连失败,自动改用本机代理', candidate)
-        return applyProxy(candidate)
-      }
+    const discovered = await discoverProxyPorts()
+    lastPorts = [...discovered]
+    lastProcs = await listProxyProcs()
+    const all = [...new Set([...discovered.map((p) => `http://127.0.0.1:${p}`), ...CANDIDATES])]
+    const results = await Promise.all(
+      all.map(async (url) => ({ url, code: await testProxy(url) })),
+    )
+    scans.push(...results)
+    const usable = results.find((r) => !r.code)
+    if (usable) {
+      console.warn('[totonai] 直连失败,自动改用本机代理', usable.url)
+      return applyProxy(usable.url)
     }
     console.warn(
-      '[totonai] 直连失败,且本机没有可用的常见代理端口',
-      scans.map((s) => `${s.url} ${s.code}`).join(' | '),
+      '[totonai] 直连失败,本机代理均不可用',
+      results.map((r) => `${r.url} ${r.code}`).join(' | '),
     )
     return null
   })()
   return autoTask
 }
 
-/** 给报错文案用的一句话总结:让用户截图即可说明本机有没有代理可用 */
+/**
+ * 后台守护:断网期间每 30 秒重新探测一次,客户事后打开加速器就能自动接上,
+ * 不需要重装插件或重启 DSH。只在失败过之后才开始工作,平时完全静默。
+ */
+export function watchProxy(onRecover: (s: ProxyState) => void, intervalMs = 30_000): () => void {
+  const timer = setInterval(() => {
+    if (state.active || !lastFailAt) return
+    resetAuto()
+    void autoProxy().then((got) => {
+      if (!got?.active) return
+      try {
+        onRecover(got)
+      } catch {
+        // 回调失败不影响代理本身
+      }
+    })
+  }, intervalMs)
+  if (typeof (timer as any).unref === 'function') (timer as any).unref()
+  return () => clearInterval(timer)
+}
+
+/** 给报错文案用的一句话总结:区分"没开加速器"和"端口类型不对"两种情况 */
 export function scanSummary(): string {
   if (!scans.length) return ''
   const usable = scans.find((s) => !s.code)
   if (usable) return `已切换代理 ${usable.url} 但仍失败`
+  const more = lastProcs.length ? `已探测进程 ${lastProcs.join(',')} 的监听端口` : '未检测到加速器或代理进程'
   const ports = scans.map((s) => new URL(s.url).port).join(',')
-  return `本机代理端口均不可用 已试 ${ports}`
+  const hint = lastProcs.length
+    ? '该端口若是 SOCKS 类型,请在加速器里开启混合/HTTP 端口后点登录'
+    : '请先打开你的加速器(Clash/mihomo 等),它会自动接上'
+  return `${more},已试 ${ports} 均不可用,${hint}`
 }

@@ -6,7 +6,7 @@ import { TokenStore } from './token.js'
 import { createPayTools } from './tools.js'
 import { clearCreds, loadCreds, saveCreds } from './creds.js'
 import { registerPanel } from './panel.js'
-import { applyProxy, resolveProxy } from './proxy.js'
+import { applyProxy, resolveProxy, watchProxy } from './proxy.js'
 
 export const name = 'dsh-totonai'
 
@@ -31,6 +31,13 @@ export function apply(ctx: Context, config: TotonAiConfig) {
   const adapter = new TotonAiAdapter(effective, tokens)
 
   const disposers: Array<() => void> = [ctx.llm.registerAdapter(['totonai'], adapter)]
+
+  // 断网期间每 30 秒重新探测本机代理:客户事后打开加速器就能自动接上,不用重启 DSH
+  disposers.push(
+    watchProxy((s) => {
+      console.warn('[totonai] 本机代理已恢复,自动接管', s.url)
+    }),
+  )
 
   // 注册/充值工具:宿主存在 tools 服务时注册(图形界面/agent 环境),headless 无 tools 时静默跳过
   const tools = (ctx as any).get?.('tools') as

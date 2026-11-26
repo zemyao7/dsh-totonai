@@ -2,7 +2,7 @@ import { attributionHeaders } from '@deepseek-ai/dsh-llm'
 import { readFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { autoProxy, lastScan, proxyState, scanSummary } from './proxy.js'
+import { autoProxy, envReport, lastScan, markProxyDead, noteFailure, proxyState, scanSummary } from './proxy.js'
 
 /** 与 ToTonAI 后端交互时的 HTTP 错误 */
 export class ApiError extends Error {
@@ -201,10 +201,13 @@ export async function apiJson(
         cause: (e as any)?.cause,
       })
       lastError = err
+      // 之前接管的代理现在连不通了(客户关了加速器或换了端口):退回直连,交给下一轮重新探测
+      markProxyDead()
+      noteFailure()
       // 超时不换域名重试:再等一轮只会让用户多等一个超时周期
       if (err.code === 'ABORT_ERR') break
       if (!retryable(method, path)) break
-      // 直连不通时,自动找本机常见代理端口接管,然后用同一个地址再试一次
+      // 直连不通时,自动找本机代理端口接管,然后用同一个地址再试一次
       if (!autoTried) {
         autoTried = true
         const proxied = await autoProxy()
@@ -232,6 +235,7 @@ export async function apiJson(
     code: lastError.code,
     base: baseURL,
     proxy: proxyState(),
+    env: envReport(),
     scan: lastScan(),
     tried,
   })
